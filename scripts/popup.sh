@@ -8,6 +8,7 @@ DEFAULT_MARGIN_RIGHT=2
 DEFAULT_MARGIN_TOP=1
 DEFAULT_INVERT_COLORS='on'
 DEFAULT_TYPE_DELAY='0.06'
+DEFAULT_ANIMATION_MODE='typewriter'
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -263,9 +264,14 @@ render_popup_from_decoded() {
 
 show_popup_with_file() {
   local file_path="$1"
+  local -a popup_flags=()
 
-  tmux display-popup "${popup_target[@]}" -B -d "$popup_directory" -x "$popup_x" -y "$popup_y" -w "$popup_width" -h "$popup_height" -s "$popup_style" \
-    sh -c '"$1" "$2" "$3"' sh "$animate_script" "$file_path" "$type_delay"
+  if [[ "$animation_mode" == "slide" ]]; then
+    popup_flags=(-E)
+  fi
+
+  tmux display-popup "${popup_target[@]}" "${popup_flags[@]}" -B -d "$popup_directory" -x "$popup_x" -y "$popup_y" -w "$popup_width" -h "$popup_height" -s "$popup_style" \
+    sh -c '"$1" "$2" "$3" "$4" "$5" "$6"' sh "$animate_script" "$file_path" "$type_delay" "$animation_mode" "$popup_width" "$popup_height"
 }
 
 if ! tmux list-commands display-popup >/dev/null 2>&1; then
@@ -286,6 +292,7 @@ margin_top="$(normalize_nonnegative_int "$(get_option "@tmux-popup-margin-top" "
 size_mode="$(normalize_size_mode "$(get_option "@tmux-popup-size" "auto")")"
 invert_colors="$(normalize_on_off "$(get_option "@tmux-popup-invert-colors" "$DEFAULT_INVERT_COLORS")" "$DEFAULT_INVERT_COLORS")"
 type_delay="$(normalize_nonnegative_number "$(get_option "@tmux-popup-type-delay" "$DEFAULT_TYPE_DELAY")" "$DEFAULT_TYPE_DELAY")"
+animation_mode="$(normalize_animation_mode "$(get_option "@tmux-popup-animation-mode" "$DEFAULT_ANIMATION_MODE")")"
 
 configured_popup_style="$(get_option "@tmux-popup-style" "")"
 if [[ -n "$configured_popup_style" ]]; then
