@@ -1,4 +1,4 @@
-# tmux-popup
+# tmux-toast
 
 A lightweight tmux plugin that opens auto-sized popups from a typed message.
 
@@ -12,7 +12,7 @@ A lightweight tmux plugin that opens auto-sized popups from a typed message.
 Add the plugin to your tmux config:
 
 ```tmux
-set -g @plugin 'tarik/tmux-popup'
+set -g @plugin 'tarik/tmux-toast'
 ```
 
 Reload tmux config and install with TPM (`prefix + I`).
@@ -21,7 +21,7 @@ Reload tmux config and install with TPM (`prefix + I`).
 
 Press `prefix + P`.
 
-The plugin opens a prompt (`Popup message`). Type a message and press Enter.
+The plugin opens a prompt (`Toast message`). Type a message and press Enter.
 
 Behavior:
 
@@ -68,14 +68,14 @@ Notes:
 ## Options
 
 ```tmux
-set -g @tmux-popup-key 'P'          # Default: P
-set -g @tmux-popup-size 'auto'      # auto|small|medium|large
-set -g @tmux-popup-padding-x '2'    # Default: 2
-set -g @tmux-popup-padding-y '1'    # Default: 1
-set -g @tmux-popup-margin-right '2' # Default: 2
-set -g @tmux-popup-margin-top '1'   # Default: 1
-set -g @tmux-popup-invert-colors 'on' # Default: on
-set -g @tmux-popup-animation-mode 'typewriter' # typewriter|slide
-set -g @tmux-popup-type-delay '0.06' # Seconds per character
-set -g @tmux-popup-style 'fg=colour252,bg=colour235' # Optional base style
+set -g @tmux-toast-key 'P'          # Default: P
+set -g @tmux-toast-size 'auto'      # auto|small|medium|large
+set -g @tmux-toast-padding-x '2'    # Default: 2
+set -g @tmux-toast-padding-y '1'    # Default: 1
+set -g @tmux-toast-margin-right '2' # Default: 2
+set -g @tmux-toast-margin-top '1'   # Default: 1
+set -g @tmux-toast-invert-colors 'on' # Default: on
+set -g @tmux-toast-animation-mode 'typewriter' # typewriter|slide
+set -g @tmux-toast-type-delay '0.06' # Seconds per character
+set -g @tmux-toast-style 'fg=colour252,bg=colour235' # Optional base style
 ```

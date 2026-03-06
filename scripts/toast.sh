@@ -24,7 +24,7 @@ source "$SCRIPT_DIR/lib/layout.sh"
 source "$SCRIPT_DIR/lib/style.sh"
 
 display_error() {
-  tmux display-message "tmux-popup: $1"
+  tmux display-message "tmux-toast: $1"
 }
 
 render_popup_from_decoded() {
@@ -285,16 +285,16 @@ if [[ -z "$raw_message" ]]; then
   exit 1
 fi
 
-pad_x="$(normalize_nonnegative_int "$(get_option "@tmux-popup-padding-x" "$DEFAULT_PAD_X")" "$DEFAULT_PAD_X")"
-pad_y="$(normalize_nonnegative_int "$(get_option "@tmux-popup-padding-y" "$DEFAULT_PAD_Y")" "$DEFAULT_PAD_Y")"
-margin_right="$(normalize_nonnegative_int "$(get_option "@tmux-popup-margin-right" "$DEFAULT_MARGIN_RIGHT")" "$DEFAULT_MARGIN_RIGHT")"
-margin_top="$(normalize_nonnegative_int "$(get_option "@tmux-popup-margin-top" "$DEFAULT_MARGIN_TOP")" "$DEFAULT_MARGIN_TOP")"
-size_mode="$(normalize_size_mode "$(get_option "@tmux-popup-size" "auto")")"
-invert_colors="$(normalize_on_off "$(get_option "@tmux-popup-invert-colors" "$DEFAULT_INVERT_COLORS")" "$DEFAULT_INVERT_COLORS")"
-type_delay="$(normalize_nonnegative_number "$(get_option "@tmux-popup-type-delay" "$DEFAULT_TYPE_DELAY")" "$DEFAULT_TYPE_DELAY")"
-animation_mode="$(normalize_animation_mode "$(get_option "@tmux-popup-animation-mode" "$DEFAULT_ANIMATION_MODE")")"
+pad_x="$(normalize_nonnegative_int "$(get_option "@tmux-toast-padding-x" "$DEFAULT_PAD_X")" "$DEFAULT_PAD_X")"
+pad_y="$(normalize_nonnegative_int "$(get_option "@tmux-toast-padding-y" "$DEFAULT_PAD_Y")" "$DEFAULT_PAD_Y")"
+margin_right="$(normalize_nonnegative_int "$(get_option "@tmux-toast-margin-right" "$DEFAULT_MARGIN_RIGHT")" "$DEFAULT_MARGIN_RIGHT")"
+margin_top="$(normalize_nonnegative_int "$(get_option "@tmux-toast-margin-top" "$DEFAULT_MARGIN_TOP")" "$DEFAULT_MARGIN_TOP")"
+size_mode="$(normalize_size_mode "$(get_option "@tmux-toast-size" "auto")")"
+invert_colors="$(normalize_on_off "$(get_option "@tmux-toast-invert-colors" "$DEFAULT_INVERT_COLORS")" "$DEFAULT_INVERT_COLORS")"
+type_delay="$(normalize_nonnegative_number "$(get_option "@tmux-toast-type-delay" "$DEFAULT_TYPE_DELAY")" "$DEFAULT_TYPE_DELAY")"
+animation_mode="$(normalize_animation_mode "$(get_option "@tmux-toast-animation-mode" "$DEFAULT_ANIMATION_MODE")")"
 
-configured_popup_style="$(get_option "@tmux-popup-style" "")"
+configured_popup_style="$(get_option "@tmux-toast-style" "")"
 if [[ -n "$configured_popup_style" ]]; then
   base_popup_style="$configured_popup_style"
 else
@@ -323,7 +323,7 @@ fi
 decoded_message="$(decode_message "$raw_message")"
 render_popup_from_decoded "$decoded_message"
 
-temp_file="$(mktemp "${TMPDIR:-/tmp}/tmux-popup.XXXXXX")"
+temp_file="$(mktemp "${TMPDIR:-/tmp}/tmux-toast.XXXXXX")"
 printf '%s' "$rendered_message" > "$temp_file"
 
 animate_script="$SCRIPT_DIR/lib/animate.sh"

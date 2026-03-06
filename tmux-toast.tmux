@@ -18,6 +18,6 @@ get_option() {
   printf '%s' "$default_value"
 }
 
-popup_key="$(get_option "@tmux-popup-key" "P")"
+toast_key="$(get_option "@tmux-toast-key" "P")"
 
-tmux bind-key "$popup_key" command-prompt -p "Popup message" "run-shell \"$CURRENT_DIR/scripts/popup.sh '%%%'\""
+tmux bind-key "$toast_key" command-prompt -p "Toast message" "run-shell \"$CURRENT_DIR/scripts/toast.sh '%%%'\""
