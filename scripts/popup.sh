@@ -4,275 +4,23 @@ set -euo pipefail
 
 DEFAULT_PAD_X=2
 DEFAULT_PAD_Y=1
+DEFAULT_MARGIN_RIGHT=2
+DEFAULT_MARGIN_TOP=1
 ESC_HINT='[ESC]'
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# shellcheck source=./lib/options.sh
+source "$SCRIPT_DIR/lib/options.sh"
+# shellcheck source=./lib/input.sh
+source "$SCRIPT_DIR/lib/input.sh"
+# shellcheck source=./lib/format.sh
+source "$SCRIPT_DIR/lib/format.sh"
+# shellcheck source=./lib/layout.sh
+source "$SCRIPT_DIR/lib/layout.sh"
 
 display_error() {
   tmux display-message "tmux-popup: $1"
-}
-
-get_option() {
-  local option="$1"
-  local default_value="$2"
-  local option_value
-
-  option_value="$(tmux show-option -gqv "$option")"
-  if [[ -n "$option_value" ]]; then
-    printf '%s' "$option_value"
-    return
-  fi
-
-  printf '%s' "$default_value"
-}
-
-clamp() {
-  local value="$1"
-  local min_value="$2"
-  local max_value="$3"
-
-  if (( value < min_value )); then
-    printf '%s' "$min_value"
-    return
-  fi
-
-  if (( value > max_value )); then
-    printf '%s' "$max_value"
-    return
-  fi
-
-  printf '%s' "$value"
-}
-
-spaces() {
-  local count="$1"
-
-  if (( count <= 0 )); then
-    return
-  fi
-
-  printf '%*s' "$count" ''
-}
-
-decode_message() {
-  local input="$1"
-  local output=""
-  local i=0
-  local length="${#input}"
-  local current
-  local next
-
-  while (( i < length )); do
-    current="${input:i:1}"
-
-    if [[ "$current" == "\\" ]] && (( i + 1 < length )); then
-      next="${input:i+1:1}"
-
-      if [[ "$next" == "\\" ]] && (( i + 2 < length )) && [[ "${input:i+2:1}" == 'n' ]]; then
-        output+='\n'
-        (( i += 3 ))
-        continue
-      fi
-
-      if [[ "$next" == 'n' ]]; then
-        output+=$'\n'
-        (( i += 2 ))
-        continue
-      fi
-    fi
-
-    output+="$current"
-    (( i += 1 ))
-  done
-
-  printf '%s' "$output"
-}
-
-split_lines() {
-  local text="$1"
-  local -n output_ref="$2"
-
-  output_ref=()
-
-  if [[ -z "$text" ]]; then
-    output_ref=("")
-    return
-  fi
-
-  while IFS= read -r line || [[ -n "$line" ]]; do
-    output_ref+=("$line")
-  done < <(printf '%s' "$text")
-
-  if [[ "$text" == *$'\n' ]]; then
-    output_ref+=("")
-  fi
-
-  if (( ${#output_ref[@]} == 0 )); then
-    output_ref=("")
-  fi
-}
-
-parse_markdown_line() {
-  local input="$1"
-  local -n plain_ref="$2"
-  local -n masks_ref="$3"
-
-  plain_ref=""
-  masks_ref=""
-
-  local i=0
-  local length="${#input}"
-  local bold=0
-  local italic=0
-  local underline=0
-  local current
-  local next
-  local two_chars
-  local style_mask
-
-  while (( i < length )); do
-    current="${input:i:1}"
-
-    if [[ "$current" == "\\" ]] && (( i + 1 < length )); then
-      next="${input:i+1:1}"
-      if [[ "$next" == "*" || "$next" == "_" || "$next" == "\\" ]]; then
-        style_mask=$((bold + (italic * 2) + (underline * 4)))
-        plain_ref+="$next"
-        masks_ref+="$style_mask"
-        (( i += 2 ))
-        continue
-      fi
-    fi
-
-    if (( i + 1 < length )); then
-      two_chars="${input:i:2}"
-
-      if [[ "$two_chars" == "**" ]]; then
-        bold=$((1 - bold))
-        (( i += 2 ))
-        continue
-      fi
-
-      if [[ "$two_chars" == "__" ]]; then
-        underline=$((1 - underline))
-        (( i += 2 ))
-        continue
-      fi
-    fi
-
-    if [[ "$current" == "*" ]]; then
-      italic=$((1 - italic))
-      (( i += 1 ))
-      continue
-    fi
-
-    style_mask=$((bold + (italic * 2) + (underline * 4)))
-    plain_ref+="$current"
-    masks_ref+="$style_mask"
-    (( i += 1 ))
-  done
-}
-
-wrap_parsed_line() {
-  local width="$1"
-  local plain="$2"
-  local masks="$3"
-  local -n output_plain_ref="$4"
-  local -n output_masks_ref="$5"
-
-  local line_length="${#plain}"
-  local start=0
-  local end
-  local split_index
-  local cursor
-
-  if (( line_length == 0 )); then
-    output_plain_ref+=("")
-    output_masks_ref+=("")
-    return
-  fi
-
-  while (( line_length - start > width )); do
-    end=$((start + width))
-    split_index=-1
-
-    for (( cursor = end - 1; cursor >= start; cursor -= 1 )); do
-      if [[ "${plain:cursor:1}" == ' ' ]]; then
-        split_index="$cursor"
-        break
-      fi
-    done
-
-    if (( split_index > start )); then
-      output_plain_ref+=("${plain:start:split_index-start}")
-      output_masks_ref+=("${masks:start:split_index-start}")
-      start=$((split_index + 1))
-      while (( start < line_length )) && [[ "${plain:start:1}" == ' ' ]]; do
-        (( start += 1 ))
-      done
-    else
-      output_plain_ref+=("${plain:start:width}")
-      output_masks_ref+=("${masks:start:width}")
-      start=$((start + width))
-    fi
-  done
-
-  output_plain_ref+=("${plain:start:line_length-start}")
-  output_masks_ref+=("${masks:start:line_length-start}")
-}
-
-style_sequence_for_mask() {
-  local mask="$1"
-  local codes=()
-  local code_string
-
-  if (( mask & 1 )); then
-    codes+=("1")
-  fi
-
-  if (( mask & 2 )); then
-    codes+=("3")
-  fi
-
-  if (( mask & 4 )); then
-    codes+=("4")
-  fi
-
-  if (( ${#codes[@]} == 0 )); then
-    printf '\033[0m'
-    return
-  fi
-
-  code_string="$(IFS=';'; printf '%s' "${codes[*]}")"
-  printf '\033[0;%sm' "$code_string"
-}
-
-style_line() {
-  local plain="$1"
-  local masks="$2"
-  local output=""
-  local current_mask=0
-  local i
-  local length="${#plain}"
-  local next_mask
-
-  for (( i = 0; i < length; i += 1 )); do
-    next_mask="${masks:i:1}"
-    if [[ -z "$next_mask" ]]; then
-      next_mask=0
-    fi
-
-    if (( next_mask != current_mask )); then
-      output+="$(style_sequence_for_mask "$next_mask")"
-      current_mask="$next_mask"
-    fi
-
-    output+="${plain:i:1}"
-  done
-
-  if (( current_mask != 0 )); then
-    output+=$'\033[0m'
-  fi
-
-  printf '%s' "$output"
 }
 
 if ! tmux list-commands display-popup >/dev/null 2>&1; then
@@ -286,19 +34,13 @@ if [[ -z "$raw_message" ]]; then
   exit 1
 fi
 
-pad_x="$(get_option "@tmux-popup-padding-x" "$DEFAULT_PAD_X")"
-pad_y="$(get_option "@tmux-popup-padding-y" "$DEFAULT_PAD_Y")"
-
-if ! [[ "$pad_x" =~ ^[0-9]+$ ]]; then
-  pad_x="$DEFAULT_PAD_X"
-fi
-
-if ! [[ "$pad_y" =~ ^[0-9]+$ ]]; then
-  pad_y="$DEFAULT_PAD_Y"
-fi
+pad_x="$(normalize_nonnegative_int "$(get_option "@tmux-popup-padding-x" "$DEFAULT_PAD_X")" "$DEFAULT_PAD_X")"
+pad_y="$(normalize_nonnegative_int "$(get_option "@tmux-popup-padding-y" "$DEFAULT_PAD_Y")" "$DEFAULT_PAD_Y")"
+margin_right="$(normalize_nonnegative_int "$(get_option "@tmux-popup-margin-right" "$DEFAULT_MARGIN_RIGHT")" "$DEFAULT_MARGIN_RIGHT")"
+margin_top="$(normalize_nonnegative_int "$(get_option "@tmux-popup-margin-top" "$DEFAULT_MARGIN_TOP")" "$DEFAULT_MARGIN_TOP")"
+size_mode="$(normalize_size_mode "$(get_option "@tmux-popup-size" "auto")")"
 
 decoded_message="$(decode_message "$raw_message")"
-
 split_lines "$decoded_message" source_lines
 
 parsed_plain_lines=()
@@ -328,7 +70,23 @@ fi
 border_cols=2
 border_rows=2
 
-natural_popup_width=$((longest_line + (2 * pad_x) + border_cols))
+if [[ "$size_mode" == "auto" ]]; then
+  natural_popup_width=$((longest_line + (2 * pad_x) + border_cols))
+else
+  case "$size_mode" in
+    small)
+      preset_width_pct=45
+      ;;
+    medium)
+      preset_width_pct=65
+      ;;
+    large)
+      preset_width_pct=85
+      ;;
+  esac
+  natural_popup_width=$(((client_width * preset_width_pct) / 100))
+fi
+
 popup_width="$(clamp "$natural_popup_width" 3 "$client_width")"
 content_width=$((popup_width - border_cols))
 if (( content_width < 1 )); then
@@ -353,12 +111,42 @@ for (( i = 0; i < ${#parsed_plain_lines[@]}; i += 1 )); do
 done
 
 wrapped_line_count="${#wrapped_plain_lines[@]}"
-natural_popup_height=$((wrapped_line_count + (2 * pad_y) + border_rows))
+
+if [[ "$size_mode" == "auto" ]]; then
+  natural_popup_height=$((wrapped_line_count + (2 * pad_y) + border_rows))
+else
+  case "$size_mode" in
+    small)
+      preset_height_pct=30
+      ;;
+    medium)
+      preset_height_pct=50
+      ;;
+    large)
+      preset_height_pct=70
+      ;;
+  esac
+  natural_popup_height=$(((client_height * preset_height_pct) / 100))
+fi
+
 popup_height="$(clamp "$natural_popup_height" 3 "$client_height")"
 content_height=$((popup_height - border_rows))
 if (( content_height < 1 )); then
   content_height=1
 fi
+
+max_x=$((client_width - popup_width))
+if (( max_x < 0 )); then
+  max_x=0
+fi
+
+max_y=$((client_height - popup_height))
+if (( max_y < 0 )); then
+  max_y=0
+fi
+
+popup_x="$(clamp "$((max_x - margin_right))" 0 "$max_x")"
+popup_y="$(clamp "$margin_top" 0 "$max_y")"
 
 max_pad_y=$(((content_height - 1) / 2))
 effective_pad_y="$pad_y"
@@ -466,7 +254,7 @@ if [[ -n "${TMUX_PANE-}" ]]; then
   popup_target=(-t "$TMUX_PANE")
 fi
 
-if ! tmux display-popup "${popup_target[@]}" -d "$popup_directory" -w "$popup_width" -h "$popup_height" -T "$popup_title" \
+if ! tmux display-popup "${popup_target[@]}" -d "$popup_directory" -x "$popup_x" -y "$popup_y" -w "$popup_width" -h "$popup_height" -T "$popup_title" \
   sh -c 'cat "$1"; rm -f "$1"' sh "$temp_file"; then
   rm -f "$temp_file"
   display_error "failed to open popup"

@@ -25,10 +25,20 @@ The plugin opens a prompt (`Popup message`). Type a message and press Enter.
 
 Behavior:
 
-- Popup width and height are calculated from your message content.
+- In `auto` mode, popup width and height are calculated from your message content.
 - Inner padding is applied around the message.
 - If needed, lines wrap automatically (soft-wrap on spaces, hard-wrap long words).
+- Popup opens in the top-right corner with configurable margins.
 - The popup stays open until dismissed, with `[ESC]` shown on the top-right border.
+
+## Size Presets
+
+You can pick a preconfigured popup size:
+
+- `auto` (default): content-based sizing (current behavior)
+- `small`: `45% x 30%`
+- `medium`: `65% x 50%`
+- `large`: `85% x 70%`
 
 ## Escapes
 
@@ -54,6 +64,9 @@ Notes:
 
 ```tmux
 set -g @tmux-popup-key 'P'          # Default: P
+set -g @tmux-popup-size 'auto'      # auto|small|medium|large
 set -g @tmux-popup-padding-x '2'    # Default: 2
 set -g @tmux-popup-padding-y '1'    # Default: 1
+set -g @tmux-popup-margin-right '2' # Default: 2
+set -g @tmux-popup-margin-top '1'   # Default: 1
 ```
