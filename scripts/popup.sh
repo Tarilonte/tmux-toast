@@ -266,7 +266,7 @@ show_popup_with_file() {
   local file_path="$1"
   local -a popup_flags=()
 
-  if [[ "$animation_mode" == "slide" ]]; then
+  if [[ "$animation_mode" == "slide" || "$animation_mode" == "typewriter" ]]; then
     popup_flags=(-E)
   fi
 

@@ -32,8 +32,9 @@ Behavior:
 - Popup style colors are inverted by default (based on tmux popup style fg/bg).
 - Message animation mode is configurable (`typewriter` or `slide`).
 - In `slide` mode, the message slides in from right, stays for 2 seconds, then slides out left and closes automatically.
+- In `typewriter` mode, the message writes in, stays for 2 seconds, then writes out and closes automatically.
 - Popup opens at its full computed size from the beginning.
-- Popup is borderless; `typewriter` mode stays open until dismissed (Esc or Ctrl-c).
+- Popup is borderless.
 
 ## Size Presets
 
