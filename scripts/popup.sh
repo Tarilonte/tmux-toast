@@ -110,47 +110,169 @@ split_lines() {
   fi
 }
 
-wrap_lines() {
-  local width="$1"
-  local -n input_ref="$2"
-  local -n output_ref="$3"
+parse_markdown_line() {
+  local input="$1"
+  local -n plain_ref="$2"
+  local -n masks_ref="$3"
 
-  output_ref=()
+  plain_ref=""
+  masks_ref=""
 
-  for original_line in "${input_ref[@]}"; do
-    local remaining="$original_line"
+  local i=0
+  local length="${#input}"
+  local bold=0
+  local italic=0
+  local underline=0
+  local current
+  local next
+  local two_chars
+  local style_mask
 
-    if [[ -z "$remaining" ]]; then
-      output_ref+=("")
+  while (( i < length )); do
+    current="${input:i:1}"
+
+    if [[ "$current" == "\\" ]] && (( i + 1 < length )); then
+      next="${input:i+1:1}"
+      if [[ "$next" == "*" || "$next" == "_" || "$next" == "\\" ]]; then
+        style_mask=$((bold + (italic * 2) + (underline * 4)))
+        plain_ref+="$next"
+        masks_ref+="$style_mask"
+        (( i += 2 ))
+        continue
+      fi
+    fi
+
+    if (( i + 1 < length )); then
+      two_chars="${input:i:2}"
+
+      if [[ "$two_chars" == "**" ]]; then
+        bold=$((1 - bold))
+        (( i += 2 ))
+        continue
+      fi
+
+      if [[ "$two_chars" == "__" ]]; then
+        underline=$((1 - underline))
+        (( i += 2 ))
+        continue
+      fi
+    fi
+
+    if [[ "$current" == "*" ]]; then
+      italic=$((1 - italic))
+      (( i += 1 ))
       continue
     fi
 
-    while (( ${#remaining} > width )); do
-      local chunk="${remaining:0:width}"
-      local split_index=-1
-      local cursor
+    style_mask=$((bold + (italic * 2) + (underline * 4)))
+    plain_ref+="$current"
+    masks_ref+="$style_mask"
+    (( i += 1 ))
+  done
+}
 
-      for (( cursor = width - 1; cursor >= 0; cursor -= 1 )); do
-        if [[ "${chunk:cursor:1}" == ' ' ]]; then
-          split_index="$cursor"
-          break
-        fi
-      done
+wrap_parsed_line() {
+  local width="$1"
+  local plain="$2"
+  local masks="$3"
+  local -n output_plain_ref="$4"
+  local -n output_masks_ref="$5"
 
-      if (( split_index > 0 )); then
-        output_ref+=("${remaining:0:split_index}")
-        remaining="${remaining:split_index+1}"
-        while [[ "$remaining" == ' '* ]]; do
-          remaining="${remaining# }"
-        done
-      else
-        output_ref+=("${remaining:0:width}")
-        remaining="${remaining:width}"
+  local line_length="${#plain}"
+  local start=0
+  local end
+  local split_index
+  local cursor
+
+  if (( line_length == 0 )); then
+    output_plain_ref+=("")
+    output_masks_ref+=("")
+    return
+  fi
+
+  while (( line_length - start > width )); do
+    end=$((start + width))
+    split_index=-1
+
+    for (( cursor = end - 1; cursor >= start; cursor -= 1 )); do
+      if [[ "${plain:cursor:1}" == ' ' ]]; then
+        split_index="$cursor"
+        break
       fi
     done
 
-    output_ref+=("$remaining")
+    if (( split_index > start )); then
+      output_plain_ref+=("${plain:start:split_index-start}")
+      output_masks_ref+=("${masks:start:split_index-start}")
+      start=$((split_index + 1))
+      while (( start < line_length )) && [[ "${plain:start:1}" == ' ' ]]; do
+        (( start += 1 ))
+      done
+    else
+      output_plain_ref+=("${plain:start:width}")
+      output_masks_ref+=("${masks:start:width}")
+      start=$((start + width))
+    fi
   done
+
+  output_plain_ref+=("${plain:start:line_length-start}")
+  output_masks_ref+=("${masks:start:line_length-start}")
+}
+
+style_sequence_for_mask() {
+  local mask="$1"
+  local codes=()
+  local code_string
+
+  if (( mask & 1 )); then
+    codes+=("1")
+  fi
+
+  if (( mask & 2 )); then
+    codes+=("3")
+  fi
+
+  if (( mask & 4 )); then
+    codes+=("4")
+  fi
+
+  if (( ${#codes[@]} == 0 )); then
+    printf '\033[0m'
+    return
+  fi
+
+  code_string="$(IFS=';'; printf '%s' "${codes[*]}")"
+  printf '\033[0;%sm' "$code_string"
+}
+
+style_line() {
+  local plain="$1"
+  local masks="$2"
+  local output=""
+  local current_mask=0
+  local i
+  local length="${#plain}"
+  local next_mask
+
+  for (( i = 0; i < length; i += 1 )); do
+    next_mask="${masks:i:1}"
+    if [[ -z "$next_mask" ]]; then
+      next_mask=0
+    fi
+
+    if (( next_mask != current_mask )); then
+      output+="$(style_sequence_for_mask "$next_mask")"
+      current_mask="$next_mask"
+    fi
+
+    output+="${plain:i:1}"
+  done
+
+  if (( current_mask != 0 )); then
+    output+=$'\033[0m'
+  fi
+
+  printf '%s' "$output"
 }
 
 if ! tmux list-commands display-popup >/dev/null 2>&1; then
@@ -179,9 +301,17 @@ decoded_message="$(decode_message "$raw_message")"
 
 split_lines "$decoded_message" source_lines
 
+parsed_plain_lines=()
+parsed_masks_lines=()
 longest_line=0
 for line in "${source_lines[@]}"; do
-  line_length="${#line}"
+  parsed_plain=""
+  parsed_masks=""
+  parse_markdown_line "$line" parsed_plain parsed_masks
+  parsed_plain_lines+=("$parsed_plain")
+  parsed_masks_lines+=("$parsed_masks")
+
+  line_length="${#parsed_plain}"
   if (( line_length > longest_line )); then
     longest_line="$line_length"
   fi
@@ -216,9 +346,13 @@ if (( inner_text_width < 1 )); then
   inner_text_width=1
 fi
 
-wrap_lines "$inner_text_width" source_lines wrapped_lines
+wrapped_plain_lines=()
+wrapped_masks_lines=()
+for (( i = 0; i < ${#parsed_plain_lines[@]}; i += 1 )); do
+  wrap_parsed_line "$inner_text_width" "${parsed_plain_lines[i]}" "${parsed_masks_lines[i]}" wrapped_plain_lines wrapped_masks_lines
+done
 
-wrapped_line_count="${#wrapped_lines[@]}"
+wrapped_line_count="${#wrapped_plain_lines[@]}"
 natural_popup_height=$((wrapped_line_count + (2 * pad_y) + border_rows))
 popup_height="$(clamp "$natural_popup_height" 3 "$client_height")"
 content_height=$((popup_height - border_rows))
@@ -244,22 +378,35 @@ if (( visible_line_count > inner_text_height )); then
   truncated=1
 fi
 
-visible_lines=()
+visible_plain_lines=()
+visible_masks_lines=()
 for (( i = 0; i < visible_line_count; i += 1 )); do
-  visible_lines+=("${wrapped_lines[i]}")
+  visible_plain_lines+=("${wrapped_plain_lines[i]}")
+  visible_masks_lines+=("${wrapped_masks_lines[i]}")
 done
 
 if (( truncated == 1 && visible_line_count > 0 )); then
   last_index=$((visible_line_count - 1))
-  last_line="${visible_lines[last_index]}"
+  last_plain_line="${visible_plain_lines[last_index]}"
+  last_masks_line="${visible_masks_lines[last_index]}"
   if (( inner_text_width >= 3 )); then
     max_last_width=$((inner_text_width - 3))
-    if (( ${#last_line} > max_last_width )); then
-      last_line="${last_line:0:max_last_width}"
+    if (( ${#last_plain_line} > max_last_width )); then
+      last_plain_line="${last_plain_line:0:max_last_width}"
+      last_masks_line="${last_masks_line:0:max_last_width}"
     fi
-    visible_lines[last_index]="$last_line..."
+
+    if (( ${#last_masks_line} > 0 )); then
+      ellipsis_mask="${last_masks_line:${#last_masks_line}-1:1}"
+    else
+      ellipsis_mask="0"
+    fi
+
+    visible_plain_lines[last_index]="${last_plain_line}..."
+    visible_masks_lines[last_index]="${last_masks_line}${ellipsis_mask}${ellipsis_mask}${ellipsis_mask}"
   else
-    visible_lines[last_index]="${last_line:0:inner_text_width}"
+    visible_plain_lines[last_index]="${last_plain_line:0:inner_text_width}"
+    visible_masks_lines[last_index]="${last_masks_line:0:inner_text_width}"
   fi
 fi
 
@@ -272,14 +419,20 @@ for (( i = 0; i < effective_pad_y; i += 1 )); do
   rendered_lines+=("$content_blank_line")
 done
 
-for line in "${visible_lines[@]}"; do
-  if (( ${#line} > inner_text_width )); then
-    line="${line:0:inner_text_width}"
+for (( i = 0; i < ${#visible_plain_lines[@]}; i += 1 )); do
+  line_plain="${visible_plain_lines[i]}"
+  line_masks="${visible_masks_lines[i]}"
+
+  if (( ${#line_plain} > inner_text_width )); then
+    line_plain="${line_plain:0:inner_text_width}"
+    line_masks="${line_masks:0:inner_text_width}"
   fi
 
-  trailing_spaces_count=$((inner_text_width - ${#line}))
+  styled_line="$(style_line "$line_plain" "$line_masks")"
+
+  trailing_spaces_count=$((inner_text_width - ${#line_plain}))
   trailing_spaces="$(spaces "$trailing_spaces_count")"
-  rendered_lines+=("${left_padding}${line}${trailing_spaces}${right_padding}")
+  rendered_lines+=("${left_padding}${styled_line}${trailing_spaces}${right_padding}")
 done
 
 for (( i = 0; i < effective_pad_y; i += 1 )); do

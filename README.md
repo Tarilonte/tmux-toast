@@ -37,6 +37,19 @@ Inside the prompt input:
 - `\n` creates a newline.
 - `\\n` stays as literal `\n` text.
 
+## Text Formatting (Markdown)
+
+The popup supports lightweight markdown-style formatting:
+
+- `**bold**`
+- `*italic*`
+- `__underline__`
+
+Notes:
+
+- Underline uses `__...__` (extension, not standard CommonMark).
+- Use backslash to keep markers literal: `\*`, `\_`, `\\`.
+
 ## Options
 
 ```tmux
