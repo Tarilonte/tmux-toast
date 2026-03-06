@@ -40,3 +40,27 @@ normalize_size_mode() {
       ;;
   esac
 }
+
+normalize_on_off() {
+  local raw_value="$1"
+  local default_value="$2"
+  local value="${raw_value,,}"
+
+  case "$value" in
+    on|off)
+      printf '%s' "$value"
+      return
+      ;;
+    true|yes|1)
+      printf 'on'
+      return
+      ;;
+    false|no|0)
+      printf 'off'
+      return
+      ;;
+    *)
+      printf '%s' "$default_value"
+      ;;
+  esac
+}

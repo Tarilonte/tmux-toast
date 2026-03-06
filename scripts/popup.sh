@@ -6,6 +6,7 @@ DEFAULT_PAD_X=2
 DEFAULT_PAD_Y=1
 DEFAULT_MARGIN_RIGHT=2
 DEFAULT_MARGIN_TOP=1
+DEFAULT_INVERT_COLORS='on'
 ESC_HINT='[ESC]'
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -18,6 +19,8 @@ source "$SCRIPT_DIR/lib/input.sh"
 source "$SCRIPT_DIR/lib/format.sh"
 # shellcheck source=./lib/layout.sh
 source "$SCRIPT_DIR/lib/layout.sh"
+# shellcheck source=./lib/style.sh
+source "$SCRIPT_DIR/lib/style.sh"
 
 display_error() {
   tmux display-message "tmux-popup: $1"
@@ -39,6 +42,20 @@ pad_y="$(normalize_nonnegative_int "$(get_option "@tmux-popup-padding-y" "$DEFAU
 margin_right="$(normalize_nonnegative_int "$(get_option "@tmux-popup-margin-right" "$DEFAULT_MARGIN_RIGHT")" "$DEFAULT_MARGIN_RIGHT")"
 margin_top="$(normalize_nonnegative_int "$(get_option "@tmux-popup-margin-top" "$DEFAULT_MARGIN_TOP")" "$DEFAULT_MARGIN_TOP")"
 size_mode="$(normalize_size_mode "$(get_option "@tmux-popup-size" "auto")")"
+invert_colors="$(normalize_on_off "$(get_option "@tmux-popup-invert-colors" "$DEFAULT_INVERT_COLORS")" "$DEFAULT_INVERT_COLORS")"
+
+configured_popup_style="$(get_option "@tmux-popup-style" "")"
+if [[ -n "$configured_popup_style" ]]; then
+  base_popup_style="$configured_popup_style"
+else
+  base_popup_style="$(tmux display-message -p '#{E:popup-style}')"
+fi
+
+if [[ "$invert_colors" == "on" ]]; then
+  popup_style="$(invert_style_fg_bg "$base_popup_style")"
+else
+  popup_style="$base_popup_style"
+fi
 
 decoded_message="$(decode_message "$raw_message")"
 split_lines "$decoded_message" source_lines
@@ -254,7 +271,7 @@ if [[ -n "${TMUX_PANE-}" ]]; then
   popup_target=(-t "$TMUX_PANE")
 fi
 
-if ! tmux display-popup "${popup_target[@]}" -d "$popup_directory" -x "$popup_x" -y "$popup_y" -w "$popup_width" -h "$popup_height" -T "$popup_title" \
+if ! tmux display-popup "${popup_target[@]}" -d "$popup_directory" -x "$popup_x" -y "$popup_y" -w "$popup_width" -h "$popup_height" -s "$popup_style" -T "$popup_title" \
   sh -c 'cat "$1"; rm -f "$1"' sh "$temp_file"; then
   rm -f "$temp_file"
   display_error "failed to open popup"

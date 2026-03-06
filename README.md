@@ -29,6 +29,7 @@ Behavior:
 - Inner padding is applied around the message.
 - If needed, lines wrap automatically (soft-wrap on spaces, hard-wrap long words).
 - Popup opens in the top-right corner with configurable margins.
+- Popup style colors are inverted by default (based on tmux popup style fg/bg).
 - The popup stays open until dismissed, with `[ESC]` shown on the top-right border.
 
 ## Size Presets
@@ -69,4 +70,6 @@ set -g @tmux-popup-padding-x '2'    # Default: 2
 set -g @tmux-popup-padding-y '1'    # Default: 1
 set -g @tmux-popup-margin-right '2' # Default: 2
 set -g @tmux-popup-margin-top '1'   # Default: 1
+set -g @tmux-popup-invert-colors 'on' # Default: on
+set -g @tmux-popup-style 'fg=colour252,bg=colour235' # Optional base style
 ```
