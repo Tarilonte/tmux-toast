@@ -63,10 +63,10 @@ decode_message() {
   while (( i < length )); do
     current="${input:i:1}"
 
-    if [[ "$current" == '\\' ]] && (( i + 1 < length )); then
+    if [[ "$current" == "\\" ]] && (( i + 1 < length )); then
       next="${input:i+1:1}"
 
-      if [[ "$next" == '\\' ]] && (( i + 2 < length )) && [[ "${input:i+2:1}" == 'n' ]]; then
+      if [[ "$next" == "\\" ]] && (( i + 2 < length )) && [[ "${input:i+2:1}" == 'n' ]]; then
         output+='\n'
         (( i += 3 ))
         continue
@@ -294,17 +294,18 @@ if (( ${#rendered_lines[@]} > content_height )); then
   rendered_lines=("${rendered_lines[@]:0:content_height}")
 fi
 
-rendered_message="$(printf '%s\n' "${rendered_lines[@]}")"
+rendered_message=""
+for (( i = 0; i < ${#rendered_lines[@]}; i += 1 )); do
+  rendered_message+="${rendered_lines[i]}"
+  if (( i + 1 < ${#rendered_lines[@]} )); then
+    rendered_message+=$'\n'
+  fi
+done
 
 temp_file="$(mktemp "${TMPDIR:-/tmp}/tmux-popup.XXXXXX")"
 printf '%s' "$rendered_message" > "$temp_file"
 
-title_width=$((popup_width - 2))
-if (( title_width < ${#ESC_HINT} )); then
-  popup_title="$ESC_HINT"
-else
-  popup_title="$(printf '%*s' "$title_width" "$ESC_HINT")"
-fi
+popup_title="#[align=right]${ESC_HINT}"
 
 popup_directory="$(tmux display-message -p '#{pane_current_path}')"
 popup_target=()

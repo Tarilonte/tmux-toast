@@ -20,4 +20,4 @@ get_option() {
 
 popup_key="$(get_option "@tmux-popup-key" "P")"
 
-tmux bind-key "$popup_key" command-prompt -p "Popup message" "run-shell \"$CURRENT_DIR/scripts/popup.sh \\\"%%%\\\"\""
+tmux bind-key "$popup_key" command-prompt -p "Popup message" "run-shell \"$CURRENT_DIR/scripts/popup.sh '%%%'\""
