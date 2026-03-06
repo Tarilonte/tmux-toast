@@ -30,6 +30,8 @@ Behavior:
 - If needed, lines wrap automatically (soft-wrap on spaces, hard-wrap long words).
 - Popup opens in the top-right corner with configurable margins.
 - Popup style colors are inverted by default (based on tmux popup style fg/bg).
+- Message text is rendered with a typewriter animation by default.
+- Popup opens at its full computed size from the beginning.
 - Popup is borderless and stays open until dismissed (Esc or Ctrl-c).
 
 ## Size Presets
@@ -71,5 +73,6 @@ set -g @tmux-popup-padding-y '1'    # Default: 1
 set -g @tmux-popup-margin-right '2' # Default: 2
 set -g @tmux-popup-margin-top '1'   # Default: 1
 set -g @tmux-popup-invert-colors 'on' # Default: on
+set -g @tmux-popup-type-delay '0.06' # Seconds per character
 set -g @tmux-popup-style 'fg=colour252,bg=colour235' # Optional base style
 ```

@@ -26,6 +26,18 @@ normalize_nonnegative_int() {
   printf '%s' "$default_value"
 }
 
+normalize_nonnegative_number() {
+  local value="$1"
+  local default_value="$2"
+
+  if [[ "$value" =~ ^([0-9]+([.][0-9]+)?|[.][0-9]+)$ ]]; then
+    printf '%s' "$value"
+    return
+  fi
+
+  printf '%s' "$default_value"
+}
+
 normalize_size_mode() {
   local raw_mode="$1"
   local mode="${raw_mode,,}"
