@@ -7,7 +7,6 @@ DEFAULT_PAD_Y=1
 DEFAULT_MARGIN_RIGHT=2
 DEFAULT_MARGIN_TOP=1
 DEFAULT_INVERT_COLORS='on'
-ESC_HINT='[ESC]'
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -84,8 +83,8 @@ if ! [[ "$client_width" =~ ^[0-9]+$ ]] || ! [[ "$client_height" =~ ^[0-9]+$ ]]; 
   exit 1
 fi
 
-border_cols=2
-border_rows=2
+border_cols=0
+border_rows=0
 
 if [[ "$size_mode" == "auto" ]]; then
   natural_popup_width=$((longest_line + (2 * pad_x) + border_cols))
@@ -252,7 +251,7 @@ if (( ${#rendered_lines[@]} > content_height )); then
   rendered_lines=("${rendered_lines[@]:0:content_height}")
 fi
 
-rendered_message=""
+rendered_message=$'\033[?25l'
 for (( i = 0; i < ${#rendered_lines[@]}; i += 1 )); do
   rendered_message+="${rendered_lines[i]}"
   if (( i + 1 < ${#rendered_lines[@]} )); then
@@ -263,15 +262,13 @@ done
 temp_file="$(mktemp "${TMPDIR:-/tmp}/tmux-popup.XXXXXX")"
 printf '%s' "$rendered_message" > "$temp_file"
 
-popup_title="#[align=right]${ESC_HINT}"
-
 popup_directory="$(tmux display-message -p '#{pane_current_path}')"
 popup_target=()
 if [[ -n "${TMUX_PANE-}" ]]; then
   popup_target=(-t "$TMUX_PANE")
 fi
 
-if ! tmux display-popup "${popup_target[@]}" -d "$popup_directory" -x "$popup_x" -y "$popup_y" -w "$popup_width" -h "$popup_height" -s "$popup_style" -T "$popup_title" \
+if ! tmux display-popup "${popup_target[@]}" -B -d "$popup_directory" -x "$popup_x" -y "$popup_y" -w "$popup_width" -h "$popup_height" -s "$popup_style" \
   sh -c 'cat "$1"; rm -f "$1"' sh "$temp_file"; then
   rm -f "$temp_file"
   display_error "failed to open popup"

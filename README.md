@@ -30,7 +30,7 @@ Behavior:
 - If needed, lines wrap automatically (soft-wrap on spaces, hard-wrap long words).
 - Popup opens in the top-right corner with configurable margins.
 - Popup style colors are inverted by default (based on tmux popup style fg/bg).
-- The popup stays open until dismissed, with `[ESC]` shown on the top-right border.
+- Popup is borderless and stays open until dismissed (Esc or Ctrl-c).
 
 ## Size Presets
 
