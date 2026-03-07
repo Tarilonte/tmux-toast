@@ -402,7 +402,7 @@ render_popup_from_decoded() {
     rendered_lines=("${rendered_lines[@]:0:content_height}")
   fi
 
-  rendered_message=$'\033[?25l'
+  rendered_message=""
   for (( i = 0; i < ${#rendered_lines[@]}; i += 1 )); do
     rendered_message+="${rendered_lines[i]}"
     if (( i + 1 < ${#rendered_lines[@]} )); then

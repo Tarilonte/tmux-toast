@@ -24,6 +24,7 @@ frame_height=0
 STYLE_PREFIX=""
 STYLE_RESET=""
 REDRAW_INTERVAL_MS=50
+preserve_ansi_content=0
 
 setup_write_lock() {
   local safe_tty
@@ -81,6 +82,68 @@ strip_ansi_line() {
   done
 
   printf '%s' "$output"
+}
+
+slice_ansi_prefix() {
+  local input="$1"
+  local max_columns="$2"
+  local output=""
+  local index=0
+  local input_len="${#input}"
+  local visible_columns=0
+  local ch
+
+  if (( max_columns <= 0 )); then
+    return
+  fi
+
+  while (( index < input_len && visible_columns < max_columns )); do
+    ch="${input:index:1}"
+
+    if [[ "$ch" == $'\033' ]]; then
+      output+="$ch"
+      (( index += 1 ))
+      if (( index < input_len )) && [[ "${input:index:1}" == '[' ]]; then
+        output+='['
+        (( index += 1 ))
+        while (( index < input_len )); do
+          ch="${input:index:1}"
+          output+="$ch"
+          (( index += 1 ))
+          if [[ "$ch" =~ [@-~] ]]; then
+            break
+          fi
+        done
+      fi
+      continue
+    fi
+
+    output+="$ch"
+    (( index += 1 ))
+    (( visible_columns += 1 ))
+  done
+
+  printf '%s' "$output"
+}
+
+restore_base_style_in_preserved_line() {
+  local line="$1"
+  local reset_seq=$'\033[0m'
+  local open_seq=$'\033[0;'
+  local reset_with_base
+
+  if [[ -z "$line" ]]; then
+    return
+  fi
+
+  line="${line//$open_seq/$'\033['}"
+
+  if [[ -n "$STYLE_PREFIX" ]]; then
+    reset_with_base="${reset_seq}${STYLE_PREFIX}"
+    line="${line//$reset_seq/$reset_with_base}"
+  fi
+
+  printf '%s' "$line"
 }
 
 style_color_sgr() {
@@ -339,7 +402,14 @@ draw_frame_at_x() {
   printf '\0337\033[?25l' >&3
   for (( i = 0; i < frame_height; i += 1 )); do
     y=$((origin_y + i + 1))
-    line_segment="${FRAME_LINES[i]:visible_start:visible_width}"
+
+    if (( preserve_ansi_content == 1 )) && (( visible_start == 0 )); then
+      line_segment="$(slice_ansi_prefix "${FRAME_LINES[i]}" "$visible_width")"
+      line_segment="$(restore_base_style_in_preserved_line "$line_segment")"
+    else
+      line_segment="${FRAME_LINES[i]:visible_start:visible_width}"
+    fi
+
     printf '\033[%d;%dH' "$y" "$((visible_x + 1))" >&3
     if [[ -n "$STYLE_PREFIX" ]]; then
       printf '%s' "$STYLE_PREFIX" >&3
@@ -393,6 +463,12 @@ build_content_lines() {
   local line
   local i
 
+  if [[ "$animation_mode" == "toast-slide" ]]; then
+    preserve_ansi_content=1
+  else
+    preserve_ansi_content=0
+  fi
+
   CONTENT_LINES=()
 
   mapfile -t raw_lines < "$file_path"
@@ -411,6 +487,14 @@ build_content_lines() {
     line=""
     if (( i < ${#raw_lines[@]} )); then
       line="${raw_lines[i]}"
+    fi
+
+    if (( preserve_ansi_content == 1 )); then
+      if [[ -z "$line" ]]; then
+        line="$(repeat_char "$text_width" " ")"
+      fi
+      CONTENT_LINES+=("$line")
+      continue
     fi
 
     line="$(strip_ansi_line "$line")"
