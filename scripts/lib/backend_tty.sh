@@ -2,6 +2,11 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# shellcheck source=./format.sh
+source "$SCRIPT_DIR/format.sh"
+
 file_path="${1-}"
 type_delay="${2-0.06}"
 animation_mode="${3-typewriter}"
@@ -25,6 +30,7 @@ STYLE_PREFIX=""
 STYLE_RESET=""
 REDRAW_INTERVAL_MS=50
 preserve_ansi_content=0
+frame_has_ansi=0
 TOAST_SLIDE_MIN_FRAME_DELAY='0.01'
 
 setup_write_lock() {
@@ -53,6 +59,18 @@ repeat_char() {
   printf '%s' "$output"
 }
 
+is_csi_final_byte() {
+  local ch="$1"
+  local code
+
+  if [[ -z "$ch" ]]; then
+    return 1
+  fi
+
+  printf -v code '%d' "'$ch"
+  (( code >= 64 && code <= 126 ))
+}
+
 strip_ansi_line() {
   local input="$1"
   local output=""
@@ -70,7 +88,7 @@ strip_ansi_line() {
         while (( index < input_len )); do
           ch="${input:index:1}"
           (( index += 1 ))
-          if [[ "$ch" =~ [@-~] ]]; then
+          if is_csi_final_byte "$ch"; then
             break
           fi
         done
@@ -83,6 +101,121 @@ strip_ansi_line() {
   done
 
   printf '%s' "$output"
+}
+
+parse_styled_line_to_plain_masks() {
+  local input="$1"
+  local -n plain_ref="$2"
+  local -n masks_ref="$3"
+  local output_plain=""
+  local output_masks=""
+  local index=0
+  local input_len="${#input}"
+  local ch
+  local final
+  local sequence
+  local mask=0
+  local code
+  local -a codes=()
+
+  while (( index < input_len )); do
+    ch="${input:index:1}"
+
+    if [[ "$ch" == $'\033' ]]; then
+      (( index += 1 ))
+
+      if (( index < input_len )) && [[ "${input:index:1}" == '[' ]]; then
+        (( index += 1 ))
+        sequence=""
+        final=""
+
+        while (( index < input_len )); do
+          ch="${input:index:1}"
+          (( index += 1 ))
+          if is_csi_final_byte "$ch"; then
+            final="$ch"
+            break
+          fi
+
+          sequence+="$ch"
+        done
+
+        if [[ "$final" == 'm' ]]; then
+          IFS=';' read -r -a codes <<< "$sequence"
+          if (( ${#codes[@]} == 0 )); then
+            codes=("0")
+          fi
+
+          for code in "${codes[@]}"; do
+            if [[ -z "$code" ]]; then
+              code=0
+            fi
+
+            case "$code" in
+              0)
+                mask=0
+                ;;
+              1)
+                mask=$((mask | 1))
+                ;;
+              3)
+                mask=$((mask | 2))
+                ;;
+              4)
+                mask=$((mask | 4))
+                ;;
+              22)
+                mask=$((mask & ~1))
+                ;;
+              23)
+                mask=$((mask & ~2))
+                ;;
+              24)
+                mask=$((mask & ~4))
+                ;;
+            esac
+          done
+        fi
+      fi
+
+      continue
+    fi
+
+    output_plain+="$ch"
+    output_masks+="$mask"
+    (( index += 1 ))
+  done
+
+  plain_ref="$output_plain"
+  masks_ref="$output_masks"
+}
+
+build_styled_lines_from_plain_masks() {
+  local -n plain_ref="$1"
+  local -n masks_ref="$2"
+  local -n output_ref="$3"
+  local line_plain
+  local line_masks
+  local styled_line
+  local i
+
+  output_ref=()
+  for (( i = 0; i < text_height; i += 1 )); do
+    line_plain=""
+    line_masks=""
+
+    if (( i < ${#plain_ref[@]} )); then
+      line_plain="${plain_ref[i]}"
+    fi
+
+    if (( i < ${#masks_ref[@]} )); then
+      line_masks="${masks_ref[i]}"
+    fi
+
+    styled_line="$(style_line "$line_plain" "$line_masks")"
+    styled_line="$(restore_base_style_in_preserved_line "$styled_line")"
+    output_ref+=("$styled_line")
+  done
 }
 
 slice_ansi_prefix() {
@@ -111,7 +244,7 @@ slice_ansi_prefix() {
           ch="${input:index:1}"
           output+="$ch"
           (( index += 1 ))
-          if [[ "$ch" =~ [@-~] ]]; then
+          if is_csi_final_byte "$ch"; then
             break
           fi
         done
@@ -476,7 +609,7 @@ draw_frame_at_x_locked() {
   for (( i = 0; i < frame_height; i += 1 )); do
     y=$((origin_y + i + 1))
 
-    if (( preserve_ansi_content == 1 )) && (( visible_start == 0 )); then
+    if (( frame_has_ansi == 1 )) && (( visible_start == 0 )); then
       line_segment="$(slice_ansi_prefix "${FRAME_LINES[i]}" "$visible_width")"
       line_segment="$(restore_base_style_in_preserved_line "$line_segment")"
     else
@@ -554,15 +687,20 @@ cleanup() {
 build_content_lines() {
   local -a raw_lines=()
   local line
+  local line_plain
+  local line_masks
   local i
 
   if [[ "$animation_mode" == "toast-slide" ]]; then
     preserve_ansi_content=1
+    frame_has_ansi=1
   else
     preserve_ansi_content=0
+    frame_has_ansi=0
   fi
 
   CONTENT_LINES=()
+  CONTENT_MASKS=()
 
   mapfile -t raw_lines < "$file_path"
   if (( ${#raw_lines[@]} == 0 )); then
@@ -587,15 +725,24 @@ build_content_lines() {
         line="$(repeat_char "$text_width" " ")"
       fi
       CONTENT_LINES+=("$line")
+      CONTENT_MASKS+=("$(repeat_char "$text_width" "0")")
       continue
     fi
 
-    line="$(strip_ansi_line "$line")"
-    if (( ${#line} < text_width )); then
-      line+="$(repeat_char "$((text_width - ${#line}))" " ")"
+    line_plain=""
+    line_masks=""
+    parse_styled_line_to_plain_masks "$line" line_plain line_masks
+
+    if (( ${#line_plain} < text_width )); then
+      line_plain+="$(repeat_char "$((text_width - ${#line_plain}))" " ")"
     fi
 
-    CONTENT_LINES+=("${line:0:text_width}")
+    if (( ${#line_masks} < text_width )); then
+      line_masks+="$(repeat_char "$((text_width - ${#line_masks}))" "0")"
+    fi
+
+    CONTENT_LINES+=("${line_plain:0:text_width}")
+    CONTENT_MASKS+=("${line_masks:0:text_width}")
   done
 }
 
@@ -631,15 +778,20 @@ draw_current_frame() {
 
 run_typewriter() {
   local -a work_lines=()
+  local -a work_masks=()
+  local -a styled_lines=()
   local -a char_rows=()
   local -a char_cols=()
   local row
   local col
   local line
+  local mask_line
+  local target_mask
   local cursor
 
   for (( row = 0; row < text_height; row += 1 )); do
     work_lines+=("$(repeat_char "$text_width" " ")")
+    work_masks+=("$(repeat_char "$text_width" "0")")
   done
 
   for (( row = 0; row < text_height; row += 1 )); do
@@ -652,25 +804,44 @@ run_typewriter() {
     done
   done
 
+  frame_has_ansi=1
+
   for (( cursor = 0; cursor < ${#char_rows[@]}; cursor += 1 )); do
     row="${char_rows[cursor]}"
     col="${char_cols[cursor]}"
+
     line="${work_lines[row]}"
     work_lines[row]="${line:0:col}${CONTENT_LINES[row]:col:1}${line:col+1}"
-    build_frame_lines work_lines
+
+    mask_line="${work_masks[row]}"
+    target_mask="${CONTENT_MASKS[row]:col:1}"
+    if [[ -z "$target_mask" ]]; then
+      target_mask=0
+    fi
+    work_masks[row]="${mask_line:0:col}${target_mask}${mask_line:col+1}"
+
+    build_styled_lines_from_plain_masks work_lines work_masks styled_lines
+    build_frame_lines styled_lines
     draw_current_frame
     sleep "$type_delay"
   done
 
-  build_frame_lines work_lines
+  build_styled_lines_from_plain_masks CONTENT_LINES CONTENT_MASKS styled_lines
+  build_frame_lines styled_lines
   hold_current_frame "$toast_duration"
 
   for (( cursor = 0; cursor < ${#char_rows[@]}; cursor += 1 )); do
     row="${char_rows[cursor]}"
     col="${char_cols[cursor]}"
+
     line="${work_lines[row]}"
     work_lines[row]="${line:0:col} ${line:col+1}"
-    build_frame_lines work_lines
+
+    mask_line="${work_masks[row]}"
+    work_masks[row]="${mask_line:0:col}0${mask_line:col+1}"
+
+    build_styled_lines_from_plain_masks work_lines work_masks styled_lines
+    build_frame_lines styled_lines
     draw_current_frame
     sleep "$type_delay"
   done
@@ -678,56 +849,89 @@ run_typewriter() {
 
 run_slide() {
   local -a work_lines=()
+  local -a work_masks=()
+  local -a styled_lines=()
   local offset
   local shift_left
   local frame_step=1
   local max_frames=40
   local i
   local visible_width
+  local mask_line
 
   if (( text_width > max_frames )); then
     frame_step=$(((text_width + max_frames - 1) / max_frames))
   fi
 
+  frame_has_ansi=1
+
   for (( offset = text_width; offset >= 0; offset -= frame_step )); do
     work_lines=()
+    work_masks=()
     for (( i = 0; i < text_height; i += 1 )); do
       if (( offset >= text_width )); then
         work_lines+=("$(repeat_char "$text_width" " ")")
+        work_masks+=("$(repeat_char "$text_width" "0")")
       else
         visible_width=$((text_width - offset))
+
         line="$(repeat_char "$offset" " ")${CONTENT_LINES[i]:0:visible_width}"
+        mask_line="$(repeat_char "$offset" "0")${CONTENT_MASKS[i]:0:visible_width}"
+
         if (( ${#line} < text_width )); then
           line+="$(repeat_char "$((text_width - ${#line}))" " ")"
         fi
+
+        if (( ${#mask_line} < text_width )); then
+          mask_line+="$(repeat_char "$((text_width - ${#mask_line}))" "0")"
+        fi
+
         work_lines+=("$line")
+        work_masks+=("$mask_line")
       fi
     done
-    build_frame_lines work_lines
+
+    build_styled_lines_from_plain_masks work_lines work_masks styled_lines
+    build_frame_lines styled_lines
     draw_current_frame
+
     if (( offset > 0 )); then
       sleep "$type_delay"
     fi
   done
 
-  build_frame_lines CONTENT_LINES
+  build_styled_lines_from_plain_masks CONTENT_LINES CONTENT_MASKS styled_lines
+  build_frame_lines styled_lines
   hold_current_frame "$toast_duration"
 
   for (( shift_left = 0; shift_left <= text_width; shift_left += frame_step )); do
     work_lines=()
+    work_masks=()
     for (( i = 0; i < text_height; i += 1 )); do
       if (( shift_left >= text_width )); then
         work_lines+=("$(repeat_char "$text_width" " ")")
+        work_masks+=("$(repeat_char "$text_width" "0")")
       else
         line="${CONTENT_LINES[i]:shift_left:text_width}"
+        mask_line="${CONTENT_MASKS[i]:shift_left:text_width}"
+
         if (( ${#line} < text_width )); then
           line+="$(repeat_char "$((text_width - ${#line}))" " ")"
         fi
+
+        if (( ${#mask_line} < text_width )); then
+          mask_line+="$(repeat_char "$((text_width - ${#mask_line}))" "0")"
+        fi
+
         work_lines+=("$line")
+        work_masks+=("$mask_line")
       fi
     done
-    build_frame_lines work_lines
+
+    build_styled_lines_from_plain_masks work_lines work_masks styled_lines
+    build_frame_lines styled_lines
     draw_current_frame
+
     if (( shift_left < text_width )); then
       sleep "$type_delay"
     fi
