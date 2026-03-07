@@ -347,6 +347,26 @@ compute_visible_region() {
 
 clear_frame_at_x() {
   local x="$1"
+
+  if (( fd_opened == 0 || frame_width <= 0 || frame_height <= 0 )); then
+    return
+  fi
+
+  if (( write_lock_open == 1 )); then
+    flock -x 9
+  fi
+
+  printf '\0337' >&3
+  clear_frame_at_x_locked "$x"
+  printf '\0338' >&3
+
+  if (( write_lock_open == 1 )); then
+    flock -u 9
+  fi
+}
+
+clear_frame_at_x_locked() {
+  local x="$1"
   local visible_x
   local visible_start
   local visible_width
@@ -364,16 +384,65 @@ clear_frame_at_x() {
   fi
 
   blank_line="$(repeat_char "$visible_width" " ")"
+  for (( row = 0; row < frame_height; row += 1 )); do
+    y=$((origin_y + row + 1))
+    printf '\033[%d;%dH%s' "$y" "$((visible_x + 1))" "$blank_line" >&3
+  done
+}
+
+clear_horizontal_strip_locked() {
+  local start_x="$1"
+  local width="$2"
+  local end_x
+  local clipped_start
+  local clipped_end
+  local clipped_width
+  local blank_line
+  local row
+  local y
+
+  if (( width <= 0 || frame_height <= 0 )); then
+    return
+  fi
+
+  end_x=$((start_x + width - 1))
+  clipped_start="$start_x"
+  clipped_end="$end_x"
+
+  if (( clipped_end < 0 || clipped_start >= viewport_width )); then
+    return
+  fi
+
+  if (( clipped_start < 0 )); then
+    clipped_start=0
+  fi
+
+  if (( clipped_end >= viewport_width )); then
+    clipped_end=$((viewport_width - 1))
+  fi
+
+  if (( clipped_end < clipped_start )); then
+    return
+  fi
+
+  clipped_width=$((clipped_end - clipped_start + 1))
+  blank_line="$(repeat_char "$clipped_width" " ")"
+
+  for (( row = 0; row < frame_height; row += 1 )); do
+    y=$((origin_y + row + 1))
+    printf '\033[%d;%dH%s' "$y" "$((clipped_start + 1))" "$blank_line" >&3
+  done
+}
+
+draw_frame_at_x() {
+  local x="$1"
 
   if (( write_lock_open == 1 )); then
     flock -x 9
   fi
 
-  printf '\0337' >&3
-  for (( row = 0; row < frame_height; row += 1 )); do
-    y=$((origin_y + row + 1))
-    printf '\033[%d;%dH%s' "$y" "$((visible_x + 1))" "$blank_line" >&3
-  done
+  printf '\0337\033[?25l' >&3
+  draw_frame_at_x_locked "$x"
   printf '\0338' >&3
 
   if (( write_lock_open == 1 )); then
@@ -381,7 +450,7 @@ clear_frame_at_x() {
   fi
 }
 
-draw_frame_at_x() {
+draw_frame_at_x_locked() {
   local x="$1"
   local visible_x
   local visible_start
@@ -394,12 +463,6 @@ draw_frame_at_x() {
   if (( visible_width <= 0 )); then
     return
   fi
-
-  if (( write_lock_open == 1 )); then
-    flock -x 9
-  fi
-
-  printf '\0337\033[?25l' >&3
   for (( i = 0; i < frame_height; i += 1 )); do
     y=$((origin_y + i + 1))
 
@@ -419,6 +482,35 @@ draw_frame_at_x() {
       printf '%s' "$STYLE_RESET" >&3
     fi
   done
+}
+
+transition_frame_x() {
+  local from_x="$1"
+  local to_x="$2"
+  local clear_start
+  local clear_width
+
+  if (( write_lock_open == 1 )); then
+    flock -x 9
+  fi
+
+  printf '\0337\033[?25l' >&3
+  draw_frame_at_x_locked "$to_x"
+
+  if (( to_x < from_x )); then
+    clear_start=$((to_x + frame_width))
+    clear_width=$((from_x - to_x))
+  elif (( to_x > from_x )); then
+    clear_start="$from_x"
+    clear_width=$((to_x - from_x))
+  else
+    clear_width=0
+  fi
+
+  if (( clear_width > 0 )); then
+    clear_horizontal_strip_locked "$clear_start" "$clear_width"
+  fi
+
   printf '\0338' >&3
 
   if (( write_lock_open == 1 )); then
@@ -665,10 +757,10 @@ run_toast_slide() {
   current_x="$start_x"
   while (( current_x > origin_x )); do
     if [[ -n "$previous_x" ]]; then
-      clear_frame_at_x "$previous_x"
+      transition_frame_x "$previous_x" "$current_x"
+    else
+      draw_frame_at_x "$current_x"
     fi
-
-    draw_frame_at_x "$current_x"
     previous_x="$current_x"
 
     sleep "$type_delay"
@@ -680,10 +772,10 @@ run_toast_slide() {
   done
 
   if [[ -n "$previous_x" ]] && (( previous_x != origin_x )); then
-    clear_frame_at_x "$previous_x"
+    transition_frame_x "$previous_x" "$origin_x"
+  else
+    draw_current_frame
   fi
-
-  draw_current_frame
   hold_current_frame "$toast_duration"
 
   current_x="$origin_x"
@@ -693,8 +785,7 @@ run_toast_slide() {
       next_x="$viewport_width"
     fi
 
-    clear_frame_at_x "$current_x"
-    draw_frame_at_x "$next_x"
+    transition_frame_x "$current_x" "$next_x"
 
     current_x="$next_x"
     if (( current_x < viewport_width )); then
