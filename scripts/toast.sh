@@ -4,13 +4,12 @@ set -euo pipefail
 
 DEFAULT_PAD_X=2
 DEFAULT_PAD_Y=1
-DEFAULT_MARGIN_RIGHT=2
 DEFAULT_MARGIN_TOP=1
 DEFAULT_TOAST_STYLE_MODE='invert'
 DEFAULT_TYPE_DELAY='0.06'
 DEFAULT_ANIMATION_MODE='typewriter'
 DEFAULT_TOAST_DURATION='5'
-DEFAULT_BACKEND_MODE='popup'
+TOAST_STACK_GAP=1
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -32,6 +31,137 @@ display_error() {
 read_style_option() {
   local option_name="$1"
   tmux show-options -gv "$option_name" 2>/dev/null || true
+}
+
+sanitize_client_key() {
+  local raw_value="$1"
+  local safe_value
+
+  safe_value="${raw_value//[^a-zA-Z0-9._-]/_}"
+  if [[ -z "$safe_value" ]]; then
+    safe_value="default"
+  fi
+
+  printf '%s' "$safe_value"
+}
+
+setup_toast_container() {
+  local safe_client
+  local container_root
+
+  safe_client="$(sanitize_client_key "$toast_client_name")"
+  container_root="${TMPDIR:-/tmp}/tmux-toast-container-${safe_client}"
+
+  toast_container_entries_dir="${container_root}/entries"
+  toast_container_lock_file="${container_root}/lock"
+
+  mkdir -p "$toast_container_entries_dir"
+  exec 8>"$toast_container_lock_file"
+  toast_container_lock_open=1
+}
+
+prune_container_entries_locked() {
+  local entry_file
+  local entry_pid
+  local entry_y
+  local entry_height
+
+  for entry_file in "$toast_container_entries_dir"/*.slot; do
+    if [[ ! -e "$entry_file" ]]; then
+      break
+    fi
+
+    entry_pid=""
+    entry_y=""
+    entry_height=""
+    if ! IFS=' ' read -r entry_pid entry_y entry_height < "$entry_file"; then
+      rm -f "$entry_file"
+      continue
+    fi
+
+    if ! [[ "$entry_pid" =~ ^[0-9]+$ ]] || ! kill -0 "$entry_pid" 2>/dev/null; then
+      rm -f "$entry_file"
+    fi
+  done
+}
+
+release_container_slot() {
+  if (( toast_container_lock_open == 0 )); then
+    return
+  fi
+
+  flock -x 8 || true
+
+  if (( toast_container_slot_registered == 1 )) && [[ -n "$toast_container_slot_file" ]]; then
+    rm -f "$toast_container_slot_file" || true
+  fi
+
+  prune_container_entries_locked || true
+  flock -u 8 || true
+
+  exec 8>&- || true
+  toast_container_lock_open=0
+  toast_container_slot_registered=0
+  toast_container_slot_file=""
+}
+
+reserve_container_slot() {
+  local entry_file
+  local entry_pid
+  local entry_y
+  local entry_height
+  local next_y
+  local entry_bottom
+
+  if (( toast_container_lock_open == 0 )); then
+    return 1
+  fi
+
+  next_y="$popup_y"
+
+  flock -x 8
+  prune_container_entries_locked
+
+  for entry_file in "$toast_container_entries_dir"/*.slot; do
+    if [[ ! -e "$entry_file" ]]; then
+      break
+    fi
+
+    entry_pid=""
+    entry_y=""
+    entry_height=""
+    if ! IFS=' ' read -r entry_pid entry_y entry_height < "$entry_file"; then
+      rm -f "$entry_file"
+      continue
+    fi
+
+    if ! [[ "$entry_pid" =~ ^[0-9]+$ ]] || ! [[ "$entry_y" =~ ^[0-9]+$ ]] || ! [[ "$entry_height" =~ ^[0-9]+$ ]]; then
+      rm -f "$entry_file"
+      continue
+    fi
+
+    if ! kill -0 "$entry_pid" 2>/dev/null; then
+      rm -f "$entry_file"
+      continue
+    fi
+
+    entry_bottom=$((entry_y + entry_height + TOAST_STACK_GAP))
+    if (( entry_bottom > next_y )); then
+      next_y="$entry_bottom"
+    fi
+  done
+
+  if (( next_y > toast_max_y )); then
+    flock -u 8
+    return 1
+  fi
+
+  popup_y="$next_y"
+  toast_container_slot_file="$toast_container_entries_dir/$$.slot"
+  printf '%s %s %s\n' "$$" "$popup_y" "$popup_height" > "$toast_container_slot_file"
+  toast_container_slot_registered=1
+
+  flock -u 8
 }
 
 render_popup_from_decoded() {
@@ -182,6 +312,7 @@ render_popup_from_decoded() {
 
   popup_x="$(clamp "$((max_x / 2))" 0 "$max_x")"
   popup_y="$(clamp "$margin_top" 0 "$max_y")"
+  toast_max_y="$max_y"
 
   max_pad_y=$(((content_height - 1) / 2))
   effective_pad_y="$pad_y"
@@ -282,30 +413,11 @@ render_popup_from_decoded() {
   toast_render_height="$content_height"
 }
 
-show_popup_with_file() {
-  local file_path="$1"
-  local -a popup_flags=()
-  local -a border_flags=()
-
-  if [[ "$animation_mode" == "slide" || "$animation_mode" == "typewriter" ]]; then
-    popup_flags=(-E)
-  fi
-
-  if [[ "$toast_style_mode" == "normal" ]]; then
-    border_flags=(-b rounded)
-  else
-    border_flags=(-B)
-  fi
-
-  tmux display-popup "${popup_target[@]}" "${popup_flags[@]}" "${border_flags[@]}" -d "$popup_directory" -x "$popup_x" -y "$popup_y" -w "$popup_width" -h "$popup_height" -s "$popup_style" \
-    sh -c '"$1" "$2" "$3" "$4" "$5" "$6" "$7"' sh "$animate_script" "$file_path" "$type_delay" "$animation_mode" "$toast_render_width" "$toast_render_height" "$toast_duration"
-}
-
 show_tty_with_file() {
   local file_path="$1"
 
   "$tty_backend_script" "$file_path" "$type_delay" "$animation_mode" "$toast_render_width" "$toast_render_height" "$toast_duration" \
-    "$toast_client_tty" "$popup_x" "$popup_y" "$toast_style_mode" "$popup_style" "$toast_client_name" >/dev/null 2>&1 &
+    "$toast_client_tty" "$popup_x" "$popup_y" "$toast_style_mode" "$popup_style" "$toast_client_name"
 }
 
 raw_message="${1-}"
@@ -316,14 +428,12 @@ fi
 
 pad_x="$(normalize_nonnegative_int "$(get_option "@tmux-toast-padding-x" "$DEFAULT_PAD_X")" "$DEFAULT_PAD_X")"
 pad_y="$(normalize_nonnegative_int "$(get_option "@tmux-toast-padding-y" "$DEFAULT_PAD_Y")" "$DEFAULT_PAD_Y")"
-margin_right="$(normalize_nonnegative_int "$(get_option "@tmux-toast-margin-right" "$DEFAULT_MARGIN_RIGHT")" "$DEFAULT_MARGIN_RIGHT")"
 margin_top="$(normalize_nonnegative_int "$(get_option "@tmux-toast-margin-top" "$DEFAULT_MARGIN_TOP")" "$DEFAULT_MARGIN_TOP")"
 size_mode="$(normalize_size_mode "$(get_option "@tmux-toast-size" "auto")")"
 toast_style_mode="$(normalize_toast_style_mode "$(get_option "@tmux-toast-style" "$DEFAULT_TOAST_STYLE_MODE")")"
 type_delay="$(normalize_nonnegative_number "$(get_option "@tmux-toast-type-delay" "$DEFAULT_TYPE_DELAY")" "$DEFAULT_TYPE_DELAY")"
 toast_duration="$(normalize_nonnegative_number "$(get_option "@tmux-toast_duration" "$DEFAULT_TOAST_DURATION")" "$DEFAULT_TOAST_DURATION")"
 animation_mode="$(normalize_animation_mode "$(get_option "@tmux-toast-animation-mode" "$DEFAULT_ANIMATION_MODE")")"
-backend_mode="$(normalize_backend_mode "$(get_option "@tmux-toast-backend" "$DEFAULT_BACKEND_MODE")")"
 
 base_popup_style="$(read_style_option popup-style)"
 if [[ -z "$base_popup_style" || "$base_popup_style" == "default" ]]; then
@@ -351,30 +461,17 @@ if ! [[ "$client_width" =~ ^[0-9]+$ ]] || ! [[ "$client_height" =~ ^[0-9]+$ ]]; 
   exit 1
 fi
 
-popup_directory="$(tmux display-message -p '#{pane_current_path}')"
-popup_target=()
-if [[ -n "${TMUX_PANE-}" ]]; then
-  popup_target=(-t "$TMUX_PANE")
+toast_client_tty="$(tmux display-message -p '#{client_tty}')"
+toast_client_name="$(tmux display-message -p '#{client_name}')"
+
+if [[ -z "$toast_client_tty" || -z "$toast_client_name" ]]; then
+  display_error "tty rendering requires an active tmux client"
+  exit 1
 fi
 
-if [[ "$backend_mode" == "popup" ]]; then
-  if ! tmux list-commands display-popup >/dev/null 2>&1; then
-    display_error "display-popup is unavailable (tmux 3.2+ required)"
-    exit 1
-  fi
-else
-  toast_client_tty="$(tmux display-message -p '#{client_tty}')"
-  toast_client_name="$(tmux display-message -p '#{client_name}')"
-
-  if [[ -z "$toast_client_tty" || -z "$toast_client_name" ]]; then
-    display_error "tty backend requires an active tmux client"
-    exit 1
-  fi
-
-  if [[ ! -w "$toast_client_tty" ]]; then
-    display_error "client tty is not writable: $toast_client_tty"
-    exit 1
-  fi
+if [[ ! -w "$toast_client_tty" ]]; then
+  display_error "client tty is not writable: $toast_client_tty"
+  exit 1
 fi
 
 decoded_message="$(decode_message "$raw_message")"
@@ -383,19 +480,25 @@ render_popup_from_decoded "$decoded_message"
 temp_file="$(mktemp "${TMPDIR:-/tmp}/tmux-toast.XXXXXX")"
 printf '%s' "$rendered_message" > "$temp_file"
 
-animate_script="$SCRIPT_DIR/lib/animate.sh"
+tty_backend_script="$SCRIPT_DIR/lib/backend_tty.sh"
 
-if [[ "$backend_mode" == "popup" ]]; then
-  if ! show_popup_with_file "$temp_file"; then
-    rm -f "$temp_file"
-    display_error "failed to open popup"
-    exit 1
-  fi
-else
-  tty_backend_script="$SCRIPT_DIR/lib/backend_tty.sh"
-  if ! show_tty_with_file "$temp_file"; then
-    rm -f "$temp_file"
-    display_error "failed to render tty toast"
-    exit 1
-  fi
+toast_container_lock_open=0
+toast_container_slot_registered=0
+toast_container_slot_file=""
+toast_container_entries_dir=""
+toast_container_lock_file=""
+
+setup_toast_container
+trap release_container_slot EXIT INT TERM
+
+if ! reserve_container_slot; then
+  rm -f "$temp_file"
+  display_error "toast container is full"
+  exit 1
+fi
+
+if ! show_tty_with_file "$temp_file"; then
+  rm -f "$temp_file"
+  display_error "failed to render tty toast"
+  exit 1
 fi

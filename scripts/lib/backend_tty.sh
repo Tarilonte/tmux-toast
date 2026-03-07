@@ -15,27 +15,22 @@ toast_style_mode="${10-invert}"
 popup_style="${11-}"
 target_client="${12-}"
 
-lock_file=""
+write_lock_file=""
 fd_opened=0
+write_lock_open=0
 frame_width=0
 frame_height=0
 STYLE_PREFIX=""
 STYLE_RESET=""
 REDRAW_INTERVAL_MS=50
 
-release_lock() {
-  local current_pid
+setup_write_lock() {
+  local safe_tty
 
-  if [[ -z "$lock_file" || ! -f "$lock_file" ]]; then
-    return
-  fi
-
-  current_pid=""
-  if read -r current_pid < "$lock_file"; then
-    if [[ "$current_pid" == "$$" ]]; then
-      rm -f "$lock_file"
-    fi
-  fi
+  safe_tty="${client_tty//[^a-zA-Z0-9._-]/_}"
+  write_lock_file="${TMPDIR:-/tmp}/tmux-toast-tty-write-${safe_tty}.lock"
+  exec 9>"$write_lock_file"
+  write_lock_open=1
 }
 
 repeat_char() {
@@ -262,18 +257,32 @@ clear_frame() {
 
   blank_line="$(repeat_char "$frame_width" " ")"
 
+  if (( write_lock_open == 1 )); then
+    flock -x 9
+  fi
+
   printf '\0337' >&3
   for (( row = 0; row < frame_height; row += 1 )); do
     y=$((origin_y + row + 1))
     printf '\033[%d;%dH%s' "$y" "$((origin_x + 1))" "$blank_line" >&3
   done
   printf '\0338' >&3
+
+  if (( write_lock_open == 1 )); then
+    flock -u 9
+  fi
 }
 
 cleanup() {
   if (( fd_opened == 1 )); then
     clear_frame || true
+    if (( write_lock_open == 1 )); then
+      flock -x 9 || true
+    fi
     printf '\033[?25h' >&3 || true
+    if (( write_lock_open == 1 )); then
+      flock -u 9 || true
+    fi
   fi
 
   if [[ -n "$target_client" ]]; then
@@ -281,28 +290,15 @@ cleanup() {
   fi
 
   rm -f "$file_path"
-  release_lock
 
   if (( fd_opened == 1 )); then
     exec 3>&-
   fi
-}
 
-acquire_lock() {
-  local safe_tty
-  local old_pid=""
-
-  safe_tty="${client_tty//[^a-zA-Z0-9._-]/_}"
-  lock_file="${TMPDIR:-/tmp}/tmux-toast-tty-${safe_tty}.lock"
-
-  if [[ -f "$lock_file" ]] && read -r old_pid < "$lock_file"; then
-    if [[ "$old_pid" =~ ^[0-9]+$ ]] && kill -0 "$old_pid" 2>/dev/null; then
-      kill "$old_pid" 2>/dev/null || true
-      sleep 0.02
-    fi
+  if (( write_lock_open == 1 )); then
+    exec 9>&-
+    write_lock_open=0
   fi
-
-  printf '%s\n' "$$" > "$lock_file"
 }
 
 build_content_lines() {
@@ -369,6 +365,10 @@ draw_current_frame() {
   local y
   local i
 
+  if (( write_lock_open == 1 )); then
+    flock -x 9
+  fi
+
   printf '\0337\033[?25l' >&3
   for (( i = 0; i < frame_height; i += 1 )); do
     y=$((origin_y + i + 1))
@@ -382,6 +382,10 @@ draw_current_frame() {
     fi
   done
   printf '\0338' >&3
+
+  if (( write_lock_open == 1 )); then
+    flock -u 9
+  fi
 }
 
 run_typewriter() {
@@ -518,7 +522,7 @@ if (( origin_y < 0 )); then
   origin_y=0
 fi
 
-acquire_lock
+setup_write_lock
 trap cleanup EXIT INT TERM
 
 exec 3>"$client_tty"
