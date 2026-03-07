@@ -23,6 +23,37 @@ Press `prefix + P`.
 
 The plugin opens a prompt (`Toast message`). Type a message and press Enter.
 
+You can also call the script directly:
+
+```bash
+~/.tmux/plugins/tmux-toast/scripts/toast.sh "Build finished"
+```
+
+CLI flags override tmux options for that single toast invocation.
+
+```bash
+~/.tmux/plugins/tmux-toast/scripts/toast.sh \
+  --style normal \
+  --animation none \
+  --duration 2 \
+  --delay 0.03 \
+  --message "Deploy completed"
+```
+
+Supported script flags:
+
+- `-m, --message <text>`
+- `--style <invert|normal>`
+- `--animation <none|typewriter|slide|toast-slide>`
+- `--duration <seconds>`
+- `--delay <seconds>`
+- `--size <auto|small|medium|large>`
+- `--padding-x <int>`
+- `--padding-y <int>`
+- `--margin-right <int>`
+- `--margin-top <int>`
+- `-h, --help`
+
 Behavior:
 
 - In `auto` mode, toast width and height are calculated from your message content.

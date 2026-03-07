@@ -12,6 +12,17 @@ DEFAULT_ANIMATION_MODE='typewriter'
 DEFAULT_TOAST_DURATION='5'
 TOAST_STACK_GAP=1
 
+cli_style_override=""
+cli_animation_override=""
+cli_duration_override=""
+cli_delay_override=""
+cli_size_override=""
+cli_padding_x_override=""
+cli_padding_y_override=""
+cli_margin_right_override=""
+cli_margin_top_override=""
+cli_message_override=""
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # shellcheck source=./lib/options.sh
@@ -32,6 +43,188 @@ display_error() {
 read_style_option() {
   local option_name="$1"
   tmux show-options -gv "$option_name" 2>/dev/null || true
+}
+
+print_usage() {
+  cat <<'EOF'
+Usage: toast.sh [options] <message>
+
+Options:
+  -m, --message <text>                   Toast message
+      --style <invert|normal>            Toast style override
+      --animation <mode>                 none|typewriter|slide|toast-slide
+      --duration <seconds>               Toast visibility duration
+      --delay <seconds>                  Animation frame/typing delay
+      --size <auto|small|medium|large>   Toast size mode
+      --padding-x <int>                  Horizontal inner padding
+      --padding-y <int>                  Vertical inner padding
+      --margin-right <int>               Right margin
+      --margin-top <int>                 Top margin
+  -h, --help                             Show this help
+
+Examples:
+  toast.sh "Build done"
+  toast.sh --animation none --style normal --duration 2 --message "Deploy finished"
+EOF
+}
+
+require_arg_value() {
+  local option_name="$1"
+  local arg_count="$2"
+
+  if (( arg_count < 2 )); then
+    display_error "missing value for $option_name"
+    exit 1
+  fi
+}
+
+parse_cli_args() {
+  local -n message_ref="$1"
+  shift
+
+  local -a positional_args=()
+
+  message_ref=""
+  cli_style_override=""
+  cli_animation_override=""
+  cli_duration_override=""
+  cli_delay_override=""
+  cli_size_override=""
+  cli_padding_x_override=""
+  cli_padding_y_override=""
+  cli_margin_right_override=""
+  cli_margin_top_override=""
+  cli_message_override=""
+
+  while (( $# > 0 )); do
+    case "$1" in
+      -h|--help)
+        print_usage
+        exit 0
+        ;;
+      -m|--message)
+        require_arg_value "$1" "$#"
+        cli_message_override="$2"
+        shift 2
+        ;;
+      --message=*)
+        cli_message_override="${1#*=}"
+        shift
+        ;;
+      --style|--toast-style)
+        require_arg_value "$1" "$#"
+        cli_style_override="$2"
+        shift 2
+        ;;
+      --style=*|--toast-style=*)
+        cli_style_override="${1#*=}"
+        shift
+        ;;
+      --animation|--animation-mode)
+        require_arg_value "$1" "$#"
+        cli_animation_override="$2"
+        shift 2
+        ;;
+      --animation=*|--animation-mode=*)
+        cli_animation_override="${1#*=}"
+        shift
+        ;;
+      --duration|--toast-duration)
+        require_arg_value "$1" "$#"
+        cli_duration_override="$2"
+        shift 2
+        ;;
+      --duration=*|--toast-duration=*)
+        cli_duration_override="${1#*=}"
+        shift
+        ;;
+      --delay|--type-delay)
+        require_arg_value "$1" "$#"
+        cli_delay_override="$2"
+        shift 2
+        ;;
+      --delay=*|--type-delay=*)
+        cli_delay_override="${1#*=}"
+        shift
+        ;;
+      --size)
+        require_arg_value "$1" "$#"
+        cli_size_override="$2"
+        shift 2
+        ;;
+      --size=*)
+        cli_size_override="${1#*=}"
+        shift
+        ;;
+      --padding-x)
+        require_arg_value "$1" "$#"
+        cli_padding_x_override="$2"
+        shift 2
+        ;;
+      --padding-x=*)
+        cli_padding_x_override="${1#*=}"
+        shift
+        ;;
+      --padding-y)
+        require_arg_value "$1" "$#"
+        cli_padding_y_override="$2"
+        shift 2
+        ;;
+      --padding-y=*)
+        cli_padding_y_override="${1#*=}"
+        shift
+        ;;
+      --margin-right)
+        require_arg_value "$1" "$#"
+        cli_margin_right_override="$2"
+        shift 2
+        ;;
+      --margin-right=*)
+        cli_margin_right_override="${1#*=}"
+        shift
+        ;;
+      --margin-top)
+        require_arg_value "$1" "$#"
+        cli_margin_top_override="$2"
+        shift 2
+        ;;
+      --margin-top=*)
+        cli_margin_top_override="${1#*=}"
+        shift
+        ;;
+      --)
+        shift
+        while (( $# > 0 )); do
+          positional_args+=("$1")
+          shift
+        done
+        ;;
+      -*)
+        display_error "unknown option: $1"
+        exit 1
+        ;;
+      *)
+        positional_args+=("$1")
+        shift
+        ;;
+    esac
+  done
+
+  if [[ -n "$cli_message_override" ]] && (( ${#positional_args[@]} > 0 )); then
+    display_error "message provided multiple times"
+    exit 1
+  fi
+
+  if [[ -n "$cli_message_override" ]]; then
+    message_ref="$cli_message_override"
+  elif (( ${#positional_args[@]} > 0 )); then
+    message_ref="${positional_args[*]}"
+  fi
+
+  if [[ -z "$message_ref" ]]; then
+    display_error "message is required"
+    exit 1
+  fi
 }
 
 sanitize_client_key() {
@@ -421,11 +614,8 @@ show_tty_with_file() {
     "$toast_client_tty" "$popup_x" "$popup_y" "$toast_style_mode" "$popup_style" "$toast_client_name" "$client_width"
 }
 
-raw_message="${1-}"
-if [[ -z "$raw_message" ]]; then
-  display_error "message is required"
-  exit 1
-fi
+raw_message=""
+parse_cli_args raw_message "$@"
 
 pad_x="$(normalize_nonnegative_int "$(get_option "@tmux-toast-padding-x" "$DEFAULT_PAD_X")" "$DEFAULT_PAD_X")"
 pad_y="$(normalize_nonnegative_int "$(get_option "@tmux-toast-padding-y" "$DEFAULT_PAD_Y")" "$DEFAULT_PAD_Y")"
@@ -436,6 +626,42 @@ toast_style_mode="$(normalize_toast_style_mode "$(get_option "@tmux-toast-style"
 type_delay="$(normalize_nonnegative_number "$(get_option "@tmux-toast-type-delay" "$DEFAULT_TYPE_DELAY")" "$DEFAULT_TYPE_DELAY")"
 toast_duration="$(normalize_nonnegative_number "$(get_option "@tmux-toast_duration" "$DEFAULT_TOAST_DURATION")" "$DEFAULT_TOAST_DURATION")"
 animation_mode="$(normalize_animation_mode "$(get_option "@tmux-toast-animation-mode" "$DEFAULT_ANIMATION_MODE")")"
+
+if [[ -n "$cli_padding_x_override" ]]; then
+  pad_x="$(normalize_nonnegative_int "$cli_padding_x_override" "$pad_x")"
+fi
+
+if [[ -n "$cli_padding_y_override" ]]; then
+  pad_y="$(normalize_nonnegative_int "$cli_padding_y_override" "$pad_y")"
+fi
+
+if [[ -n "$cli_margin_right_override" ]]; then
+  margin_right="$(normalize_nonnegative_int "$cli_margin_right_override" "$margin_right")"
+fi
+
+if [[ -n "$cli_margin_top_override" ]]; then
+  margin_top="$(normalize_nonnegative_int "$cli_margin_top_override" "$margin_top")"
+fi
+
+if [[ -n "$cli_size_override" ]]; then
+  size_mode="$(normalize_size_mode "$cli_size_override")"
+fi
+
+if [[ -n "$cli_style_override" ]]; then
+  toast_style_mode="$(normalize_toast_style_mode "$cli_style_override")"
+fi
+
+if [[ -n "$cli_delay_override" ]]; then
+  type_delay="$(normalize_nonnegative_number "$cli_delay_override" "$type_delay")"
+fi
+
+if [[ -n "$cli_duration_override" ]]; then
+  toast_duration="$(normalize_nonnegative_number "$cli_duration_override" "$toast_duration")"
+fi
+
+if [[ -n "$cli_animation_override" ]]; then
+  animation_mode="$(normalize_animation_mode "$cli_animation_override")"
+fi
 
 base_popup_style="$(read_style_option popup-style)"
 if [[ -z "$base_popup_style" || "$base_popup_style" == "default" ]]; then
