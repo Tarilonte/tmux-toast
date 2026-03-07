@@ -58,8 +58,12 @@ normalize_animation_mode() {
   local mode="${raw_mode,,}"
 
   case "$mode" in
-    typewriter|slide)
+    typewriter|slide|toast-slide)
       printf '%s' "$mode"
+      return
+      ;;
+    toast_slide|toastslide)
+      printf 'toast-slide'
       return
       ;;
     *)

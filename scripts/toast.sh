@@ -4,6 +4,7 @@ set -euo pipefail
 
 DEFAULT_PAD_X=2
 DEFAULT_PAD_Y=1
+DEFAULT_MARGIN_RIGHT=2
 DEFAULT_MARGIN_TOP=1
 DEFAULT_TOAST_STYLE_MODE='invert'
 DEFAULT_TYPE_DELAY='0.06'
@@ -310,7 +311,7 @@ render_popup_from_decoded() {
     max_y=0
   fi
 
-  popup_x="$(clamp "$((max_x / 2))" 0 "$max_x")"
+  popup_x="$(clamp "$((max_x - margin_right))" 0 "$max_x")"
   popup_y="$(clamp "$margin_top" 0 "$max_y")"
   toast_max_y="$max_y"
 
@@ -417,7 +418,7 @@ show_tty_with_file() {
   local file_path="$1"
 
   "$tty_backend_script" "$file_path" "$type_delay" "$animation_mode" "$toast_render_width" "$toast_render_height" "$toast_duration" \
-    "$toast_client_tty" "$popup_x" "$popup_y" "$toast_style_mode" "$popup_style" "$toast_client_name"
+    "$toast_client_tty" "$popup_x" "$popup_y" "$toast_style_mode" "$popup_style" "$toast_client_name" "$client_width"
 }
 
 raw_message="${1-}"
@@ -428,6 +429,7 @@ fi
 
 pad_x="$(normalize_nonnegative_int "$(get_option "@tmux-toast-padding-x" "$DEFAULT_PAD_X")" "$DEFAULT_PAD_X")"
 pad_y="$(normalize_nonnegative_int "$(get_option "@tmux-toast-padding-y" "$DEFAULT_PAD_Y")" "$DEFAULT_PAD_Y")"
+margin_right="$(normalize_nonnegative_int "$(get_option "@tmux-toast-margin-right" "$DEFAULT_MARGIN_RIGHT")" "$DEFAULT_MARGIN_RIGHT")"
 margin_top="$(normalize_nonnegative_int "$(get_option "@tmux-toast-margin-top" "$DEFAULT_MARGIN_TOP")" "$DEFAULT_MARGIN_TOP")"
 size_mode="$(normalize_size_mode "$(get_option "@tmux-toast-size" "auto")")"
 toast_style_mode="$(normalize_toast_style_mode "$(get_option "@tmux-toast-style" "$DEFAULT_TOAST_STYLE_MODE")")"

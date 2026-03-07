@@ -14,6 +14,7 @@ origin_y="${9-0}"
 toast_style_mode="${10-invert}"
 popup_style="${11-}"
 target_client="${12-}"
+viewport_width="${13-0}"
 
 write_lock_file=""
 fd_opened=0
@@ -246,7 +247,46 @@ hold_current_frame() {
   done
 }
 
-clear_frame() {
+compute_visible_region() {
+  local x="$1"
+  local width="$2"
+  local visible_x="$x"
+  local visible_start=0
+  local visible_width="$width"
+
+  if (( visible_width <= 0 )); then
+    printf '0 0 0\n'
+    return
+  fi
+
+  if (( visible_x < 0 )); then
+    visible_start=$((-visible_x))
+    visible_x=0
+    visible_width=$((visible_width - visible_start))
+  fi
+
+  if (( visible_width <= 0 || visible_x >= viewport_width )); then
+    printf '0 0 0\n'
+    return
+  fi
+
+  if (( visible_x + visible_width > viewport_width )); then
+    visible_width=$((viewport_width - visible_x))
+  fi
+
+  if (( visible_width <= 0 )); then
+    printf '0 0 0\n'
+    return
+  fi
+
+  printf '%s %s %s\n' "$visible_x" "$visible_start" "$visible_width"
+}
+
+clear_frame_at_x() {
+  local x="$1"
+  local visible_x
+  local visible_start
+  local visible_width
   local blank_line
   local row
   local y
@@ -255,7 +295,12 @@ clear_frame() {
     return
   fi
 
-  blank_line="$(repeat_char "$frame_width" " ")"
+  IFS=' ' read -r visible_x visible_start visible_width < <(compute_visible_region "$x" "$frame_width")
+  if (( visible_width <= 0 )); then
+    return
+  fi
+
+  blank_line="$(repeat_char "$visible_width" " ")"
 
   if (( write_lock_open == 1 )); then
     flock -x 9
@@ -264,13 +309,55 @@ clear_frame() {
   printf '\0337' >&3
   for (( row = 0; row < frame_height; row += 1 )); do
     y=$((origin_y + row + 1))
-    printf '\033[%d;%dH%s' "$y" "$((origin_x + 1))" "$blank_line" >&3
+    printf '\033[%d;%dH%s' "$y" "$((visible_x + 1))" "$blank_line" >&3
   done
   printf '\0338' >&3
 
   if (( write_lock_open == 1 )); then
     flock -u 9
   fi
+}
+
+draw_frame_at_x() {
+  local x="$1"
+  local visible_x
+  local visible_start
+  local visible_width
+  local y
+  local i
+  local line_segment
+
+  IFS=' ' read -r visible_x visible_start visible_width < <(compute_visible_region "$x" "$frame_width")
+  if (( visible_width <= 0 )); then
+    return
+  fi
+
+  if (( write_lock_open == 1 )); then
+    flock -x 9
+  fi
+
+  printf '\0337\033[?25l' >&3
+  for (( i = 0; i < frame_height; i += 1 )); do
+    y=$((origin_y + i + 1))
+    line_segment="${FRAME_LINES[i]:visible_start:visible_width}"
+    printf '\033[%d;%dH' "$y" "$((visible_x + 1))" >&3
+    if [[ -n "$STYLE_PREFIX" ]]; then
+      printf '%s' "$STYLE_PREFIX" >&3
+    fi
+    printf '%s' "$line_segment" >&3
+    if [[ -n "$STYLE_RESET" ]]; then
+      printf '%s' "$STYLE_RESET" >&3
+    fi
+  done
+  printf '\0338' >&3
+
+  if (( write_lock_open == 1 )); then
+    flock -u 9
+  fi
+}
+
+clear_frame() {
+  clear_frame_at_x "$origin_x"
 }
 
 cleanup() {
@@ -362,30 +449,7 @@ build_frame_lines() {
 }
 
 draw_current_frame() {
-  local y
-  local i
-
-  if (( write_lock_open == 1 )); then
-    flock -x 9
-  fi
-
-  printf '\0337\033[?25l' >&3
-  for (( i = 0; i < frame_height; i += 1 )); do
-    y=$((origin_y + i + 1))
-    printf '\033[%d;%dH' "$y" "$((origin_x + 1))" >&3
-    if [[ -n "$STYLE_PREFIX" ]]; then
-      printf '%s' "$STYLE_PREFIX" >&3
-    fi
-    printf '%s' "${FRAME_LINES[i]}" >&3
-    if [[ -n "$STYLE_RESET" ]]; then
-      printf '%s' "$STYLE_RESET" >&3
-    fi
-  done
-  printf '\0338' >&3
-
-  if (( write_lock_open == 1 )); then
-    flock -u 9
-  fi
+  draw_frame_at_x "$origin_x"
 }
 
 run_typewriter() {
@@ -493,6 +557,51 @@ run_slide() {
   done
 }
 
+run_toast_slide() {
+  local start_x
+  local current_x
+  local previous_x=""
+  local frame_step=1
+  local max_frames=40
+  local travel
+
+  build_frame_lines CONTENT_LINES
+
+  start_x="$viewport_width"
+  if (( start_x < origin_x )); then
+    start_x="$origin_x"
+  fi
+
+  travel=$((start_x - origin_x))
+  if (( travel > max_frames )); then
+    frame_step=$(((travel + max_frames - 1) / max_frames))
+  fi
+
+  current_x="$start_x"
+  while (( current_x > origin_x )); do
+    if [[ -n "$previous_x" ]]; then
+      clear_frame_at_x "$previous_x"
+    fi
+
+    draw_frame_at_x "$current_x"
+    previous_x="$current_x"
+
+    sleep "$type_delay"
+
+    current_x=$((current_x - frame_step))
+    if (( current_x < origin_x )); then
+      current_x="$origin_x"
+    fi
+  done
+
+  if [[ -n "$previous_x" ]] && (( previous_x != origin_x )); then
+    clear_frame_at_x "$previous_x"
+  fi
+
+  draw_current_frame
+  hold_current_frame "$toast_duration"
+}
+
 if [[ -z "$file_path" || ! -f "$file_path" ]]; then
   exit 1
 fi
@@ -514,12 +623,18 @@ fi
 if ! [[ "$origin_y" =~ ^-?[0-9]+$ ]]; then
   origin_y=0
 fi
+if ! [[ "$viewport_width" =~ ^[0-9]+$ ]]; then
+  viewport_width=0
+fi
 
 if (( origin_x < 0 )); then
   origin_x=0
 fi
 if (( origin_y < 0 )); then
   origin_y=0
+fi
+if (( viewport_width <= 0 )); then
+  viewport_width="$text_width"
 fi
 
 setup_write_lock
@@ -534,6 +649,9 @@ build_content_lines
 case "$animation_mode" in
   slide)
     run_slide
+    ;;
+  toast-slide)
+    run_toast_slide
     ;;
   *)
     run_typewriter
