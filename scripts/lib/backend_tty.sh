@@ -584,7 +584,7 @@ draw_frame_at_x() {
     flock -x 9
   fi
 
-  printf '\0337\033[?25l' >&3
+  printf '\0337' >&3
   draw_frame_at_x_locked "$x"
   printf '\0338' >&3
 
@@ -635,7 +635,6 @@ transition_frame_x() {
     flock -x 9
   fi
 
-  printf '\033[?25l' >&3
   if (( from_x != to_x )); then
     clear_frame_at_x_locked "$from_x"
   fi
@@ -938,6 +937,15 @@ run_slide() {
   done
 }
 
+run_none() {
+  local -a styled_lines=()
+
+  frame_has_ansi=1
+  build_styled_lines_from_plain_masks CONTENT_LINES CONTENT_MASKS styled_lines
+  build_frame_lines styled_lines
+  hold_current_frame "$toast_duration"
+}
+
 run_toast_slide() {
   local start_x
   local current_x
@@ -1050,6 +1058,9 @@ build_content_lines
 case "$animation_mode" in
   slide)
     run_slide
+    ;;
+  none)
+    run_none
     ;;
   toast-slide)
     run_toast_slide

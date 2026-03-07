@@ -35,11 +35,13 @@ Behavior:
 - `@tmux-toast-style='invert'` (default) swaps fg/bg and keeps a borderless toast.
 - `@tmux-toast-style='normal'` keeps normal fg/bg and shows a rounded border.
 - Toast rendering is non-blocking, so typing and scrolling continue while toasts are active.
-- Message animation mode is configurable (`typewriter`, `slide`, or `toast-slide`).
+- Message animation mode is configurable (`none`, `typewriter`, `slide`, or `toast-slide`).
+- In `none` mode, the toast appears immediately with no entry/exit animation.
 - In `slide` mode, the message slides in from right, stays for `@tmux-toast_duration` seconds, then slides out left and closes automatically.
 - In `typewriter` mode, the message writes in, stays for `@tmux-toast_duration` seconds, then writes out and closes automatically.
 - In `toast-slide` mode, the full toast frame slides in from offscreen right, stays for `@tmux-toast_duration` seconds, then slides out to the right.
 - In `toast-slide` mode, frame delay is clamped to `0.01s` minimum to reduce rendering artifacts.
+- `@tmux-toast-type-delay` is ignored when `@tmux-toast-animation-mode` is `none`.
 - Each toast opens at its full computed size from the beginning.
 - Invert style is borderless; normal style uses rounded corners.
 
@@ -82,7 +84,7 @@ set -g @tmux-toast-padding-y '1'    # Default: 1
 set -g @tmux-toast-margin-right '2' # Default: 2
 set -g @tmux-toast-margin-top '1'   # Default: 1
 set -g @tmux-toast-style 'invert'    # invert|normal (Default: invert)
-set -g @tmux-toast-animation-mode 'typewriter' # typewriter|slide|toast-slide
+set -g @tmux-toast-animation-mode 'typewriter' # none|typewriter|slide|toast-slide
 set -g @tmux-toast-type-delay '0.06' # Seconds per character
-set -g @tmux-toast_duration '5'      # Seconds before write-out/slide-out
+set -g @tmux-toast_duration '5'      # Seconds the toast remains visible
 ```
