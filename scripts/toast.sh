@@ -180,7 +180,7 @@ render_popup_from_decoded() {
     max_y=0
   fi
 
-  popup_x="$(clamp "$((max_x - margin_right))" 0 "$max_x")"
+  popup_x="$(clamp "$((max_x / 2))" 0 "$max_x")"
   popup_y="$(clamp "$margin_top" 0 "$max_y")"
 
   max_pad_y=$(((content_height - 1) / 2))
@@ -305,7 +305,7 @@ show_tty_with_file() {
   local file_path="$1"
 
   "$tty_backend_script" "$file_path" "$type_delay" "$animation_mode" "$toast_render_width" "$toast_render_height" "$toast_duration" \
-    "$toast_client_tty" "$popup_x" "$popup_y" "$toast_style_mode" "$popup_style" "$toast_client_name"
+    "$toast_client_tty" "$popup_x" "$popup_y" "$toast_style_mode" "$popup_style" "$toast_client_name" >/dev/null 2>&1 &
 }
 
 raw_message="${1-}"

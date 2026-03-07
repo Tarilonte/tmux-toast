@@ -21,6 +21,7 @@ frame_width=0
 frame_height=0
 STYLE_PREFIX=""
 STYLE_RESET=""
+REDRAW_INTERVAL_MS=50
 
 release_lock() {
   local current_pid
@@ -198,6 +199,58 @@ build_style_sequences() {
   STYLE_RESET=$'\033[0m'
 }
 
+sleep_milliseconds() {
+  local milliseconds="$1"
+  local seconds
+
+  if (( milliseconds <= 0 )); then
+    return
+  fi
+
+  printf -v seconds '%d.%03d' "$((milliseconds / 1000))" "$((milliseconds % 1000))"
+  sleep "$seconds"
+}
+
+hold_current_frame() {
+  local duration="$1"
+  local duration_ms
+  local end_ms
+  local now_ms
+  local remaining_ms
+  local sleep_ms
+
+  duration_ms="$(LC_ALL=C awk -v value="$duration" 'BEGIN {
+    if (value <= 0) {
+      print 0
+      exit
+    }
+    printf "%d", (value * 1000) + 0.5
+  }')"
+
+  if (( duration_ms <= 0 )); then
+    draw_current_frame
+    return
+  fi
+
+  end_ms=$(( $(date +%s%3N) + duration_ms ))
+  while :; do
+    draw_current_frame
+    now_ms="$(date +%s%3N)"
+    if (( now_ms >= end_ms )); then
+      break
+    fi
+
+    remaining_ms=$((end_ms - now_ms))
+    if (( remaining_ms > REDRAW_INTERVAL_MS )); then
+      sleep_ms="$REDRAW_INTERVAL_MS"
+    else
+      sleep_ms="$remaining_ms"
+    fi
+
+    sleep_milliseconds "$sleep_ms"
+  done
+}
+
 clear_frame() {
   local blank_line
   local row
@@ -364,7 +417,8 @@ run_typewriter() {
     sleep "$type_delay"
   done
 
-  sleep "$toast_duration"
+  build_frame_lines work_lines
+  hold_current_frame "$toast_duration"
 
   for (( cursor = 0; cursor < ${#char_rows[@]}; cursor += 1 )); do
     row="${char_rows[cursor]}"
@@ -411,7 +465,8 @@ run_slide() {
     fi
   done
 
-  sleep "$toast_duration"
+  build_frame_lines CONTENT_LINES
+  hold_current_frame "$toast_duration"
 
   for (( shift_left = 0; shift_left <= text_width; shift_left += frame_step )); do
     work_lines=()

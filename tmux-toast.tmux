@@ -20,4 +20,4 @@ get_option() {
 
 toast_key="$(get_option "@tmux-toast-key" "P")"
 
-tmux bind-key "$toast_key" command-prompt -p "Toast message" "run-shell \"$CURRENT_DIR/scripts/toast.sh '%%%'\""
+tmux bind-key "$toast_key" command-prompt -p "Toast message" "run-shell -b \"$CURRENT_DIR/scripts/toast.sh '%%%'\""
