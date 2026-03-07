@@ -68,6 +68,21 @@ normalize_animation_mode() {
   esac
 }
 
+normalize_backend_mode() {
+  local raw_mode="$1"
+  local mode="${raw_mode,,}"
+
+  case "$mode" in
+    popup|tty)
+      printf '%s' "$mode"
+      return
+      ;;
+    *)
+      printf 'popup'
+      ;;
+  esac
+}
+
 normalize_toast_style_mode() {
   local raw_mode="$1"
   local mode="${raw_mode,,}"

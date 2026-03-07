@@ -10,6 +10,7 @@ DEFAULT_TOAST_STYLE_MODE='invert'
 DEFAULT_TYPE_DELAY='0.06'
 DEFAULT_ANIMATION_MODE='typewriter'
 DEFAULT_TOAST_DURATION='5'
+DEFAULT_BACKEND_MODE='popup'
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -300,10 +301,12 @@ show_popup_with_file() {
     sh -c '"$1" "$2" "$3" "$4" "$5" "$6" "$7"' sh "$animate_script" "$file_path" "$type_delay" "$animation_mode" "$toast_render_width" "$toast_render_height" "$toast_duration"
 }
 
-if ! tmux list-commands display-popup >/dev/null 2>&1; then
-  display_error "display-popup is unavailable (tmux 3.2+ required)"
-  exit 1
-fi
+show_tty_with_file() {
+  local file_path="$1"
+
+  "$tty_backend_script" "$file_path" "$type_delay" "$animation_mode" "$toast_render_width" "$toast_render_height" "$toast_duration" \
+    "$toast_client_tty" "$popup_x" "$popup_y" "$toast_style_mode" "$popup_style" "$toast_client_name"
+}
 
 raw_message="${1-}"
 if [[ -z "$raw_message" ]]; then
@@ -320,6 +323,7 @@ toast_style_mode="$(normalize_toast_style_mode "$(get_option "@tmux-toast-style"
 type_delay="$(normalize_nonnegative_number "$(get_option "@tmux-toast-type-delay" "$DEFAULT_TYPE_DELAY")" "$DEFAULT_TYPE_DELAY")"
 toast_duration="$(normalize_nonnegative_number "$(get_option "@tmux-toast_duration" "$DEFAULT_TOAST_DURATION")" "$DEFAULT_TOAST_DURATION")"
 animation_mode="$(normalize_animation_mode "$(get_option "@tmux-toast-animation-mode" "$DEFAULT_ANIMATION_MODE")")"
+backend_mode="$(normalize_backend_mode "$(get_option "@tmux-toast-backend" "$DEFAULT_BACKEND_MODE")")"
 
 base_popup_style="$(read_style_option popup-style)"
 if [[ -z "$base_popup_style" || "$base_popup_style" == "default" ]]; then
@@ -353,6 +357,26 @@ if [[ -n "${TMUX_PANE-}" ]]; then
   popup_target=(-t "$TMUX_PANE")
 fi
 
+if [[ "$backend_mode" == "popup" ]]; then
+  if ! tmux list-commands display-popup >/dev/null 2>&1; then
+    display_error "display-popup is unavailable (tmux 3.2+ required)"
+    exit 1
+  fi
+else
+  toast_client_tty="$(tmux display-message -p '#{client_tty}')"
+  toast_client_name="$(tmux display-message -p '#{client_name}')"
+
+  if [[ -z "$toast_client_tty" || -z "$toast_client_name" ]]; then
+    display_error "tty backend requires an active tmux client"
+    exit 1
+  fi
+
+  if [[ ! -w "$toast_client_tty" ]]; then
+    display_error "client tty is not writable: $toast_client_tty"
+    exit 1
+  fi
+fi
+
 decoded_message="$(decode_message "$raw_message")"
 render_popup_from_decoded "$decoded_message"
 
@@ -361,8 +385,17 @@ printf '%s' "$rendered_message" > "$temp_file"
 
 animate_script="$SCRIPT_DIR/lib/animate.sh"
 
-if ! show_popup_with_file "$temp_file"; then
-  rm -f "$temp_file"
-  display_error "failed to open popup"
-  exit 1
+if [[ "$backend_mode" == "popup" ]]; then
+  if ! show_popup_with_file "$temp_file"; then
+    rm -f "$temp_file"
+    display_error "failed to open popup"
+    exit 1
+  fi
+else
+  tty_backend_script="$SCRIPT_DIR/lib/backend_tty.sh"
+  if ! show_tty_with_file "$temp_file"; then
+    rm -f "$temp_file"
+    display_error "failed to render tty toast"
+    exit 1
+  fi
 fi
