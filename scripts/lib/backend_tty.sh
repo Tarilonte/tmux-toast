@@ -561,6 +561,7 @@ run_toast_slide() {
   local start_x
   local current_x
   local previous_x=""
+  local next_x
   local frame_step=1
   local max_frames=40
   local travel
@@ -600,6 +601,24 @@ run_toast_slide() {
 
   draw_current_frame
   hold_current_frame "$toast_duration"
+
+  current_x="$origin_x"
+  while (( current_x < viewport_width )); do
+    next_x=$((current_x + frame_step))
+    if (( next_x > viewport_width )); then
+      next_x="$viewport_width"
+    fi
+
+    clear_frame_at_x "$current_x"
+    draw_frame_at_x "$next_x"
+
+    current_x="$next_x"
+    if (( current_x < viewport_width )); then
+      sleep "$type_delay"
+    fi
+  done
+
+  origin_x="$viewport_width"
 }
 
 if [[ -z "$file_path" || ! -f "$file_path" ]]; then

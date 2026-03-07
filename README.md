@@ -38,7 +38,7 @@ Behavior:
 - Message animation mode is configurable (`typewriter`, `slide`, or `toast-slide`).
 - In `slide` mode, the message slides in from right, stays for `@tmux-toast_duration` seconds, then slides out left and closes automatically.
 - In `typewriter` mode, the message writes in, stays for `@tmux-toast_duration` seconds, then writes out and closes automatically.
-- In `toast-slide` mode, the full toast frame slides in from offscreen right, stays for `@tmux-toast_duration` seconds, then closes instantly.
+- In `toast-slide` mode, the full toast frame slides in from offscreen right, stays for `@tmux-toast_duration` seconds, then slides out to the right.
 - Each toast opens at its full computed size from the beginning.
 - Invert style is borderless; normal style uses rounded corners.
 
