@@ -7,6 +7,7 @@ type_delay="${2-0.06}"
 animation_mode="${3-typewriter}"
 popup_width="${4-0}"
 popup_height="${5-0}"
+toast_duration="${6-2}"
 
 if [[ -z "$file_path" || ! -f "$file_path" ]]; then
   exit 1
@@ -158,7 +159,7 @@ run_typewriter() {
     (( index += 1 ))
   done
 
-  sleep 2
+  sleep "$toast_duration"
 
   build_plain_lines plain_lines
 
@@ -229,7 +230,7 @@ run_slide() {
   printf '\033[H'
   cat "$file_path"
 
-  sleep 2
+  sleep "$toast_duration"
 
   for (( shift_left = 0; shift_left <= popup_width; shift_left += frame_step )); do
     frame_lines=()

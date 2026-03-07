@@ -6,9 +6,10 @@ DEFAULT_PAD_X=2
 DEFAULT_PAD_Y=1
 DEFAULT_MARGIN_RIGHT=2
 DEFAULT_MARGIN_TOP=1
-DEFAULT_INVERT_COLORS='on'
+DEFAULT_TOAST_STYLE_MODE='invert'
 DEFAULT_TYPE_DELAY='0.06'
 DEFAULT_ANIMATION_MODE='typewriter'
+DEFAULT_TOAST_DURATION='5'
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -50,6 +51,8 @@ render_popup_from_decoded() {
   local parsed_masks
   local natural_popup_width
   local content_width
+  local border_cols
+  local border_rows
   local max_pad_x
   local effective_pad_x
   local inner_text_width
@@ -95,8 +98,16 @@ render_popup_from_decoded() {
     fi
   done
 
+  if [[ "$toast_style_mode" == "normal" ]]; then
+    border_cols=2
+    border_rows=2
+  else
+    border_cols=0
+    border_rows=0
+  fi
+
   if [[ "$size_mode" == "auto" ]]; then
-    natural_popup_width=$((longest_line + (2 * pad_x)))
+    natural_popup_width=$((longest_line + (2 * pad_x) + border_cols))
   else
     case "$size_mode" in
       small)
@@ -112,7 +123,7 @@ render_popup_from_decoded() {
   fi
 
   popup_width="$(clamp "$natural_popup_width" 3 "$client_width")"
-  content_width="$popup_width"
+  content_width=$((popup_width - border_cols))
   if (( content_width < 1 )); then
     content_width=1
   fi
@@ -137,7 +148,7 @@ render_popup_from_decoded() {
   wrapped_line_count="${#wrapped_plain_lines[@]}"
 
   if [[ "$size_mode" == "auto" ]]; then
-    natural_popup_height=$((wrapped_line_count + (2 * pad_y)))
+    natural_popup_height=$((wrapped_line_count + (2 * pad_y) + border_rows))
   else
     case "$size_mode" in
       small)
@@ -153,7 +164,7 @@ render_popup_from_decoded() {
   fi
 
   popup_height="$(clamp "$natural_popup_height" 3 "$client_height")"
-  content_height="$popup_height"
+  content_height=$((popup_height - border_rows))
   if (( content_height < 1 )); then
     content_height=1
   fi
@@ -265,18 +276,28 @@ render_popup_from_decoded() {
       rendered_message+=$'\n'
     fi
   done
+
+  toast_render_width="$content_width"
+  toast_render_height="$content_height"
 }
 
 show_popup_with_file() {
   local file_path="$1"
   local -a popup_flags=()
+  local -a border_flags=()
 
   if [[ "$animation_mode" == "slide" || "$animation_mode" == "typewriter" ]]; then
     popup_flags=(-E)
   fi
 
-  tmux display-popup "${popup_target[@]}" "${popup_flags[@]}" -B -d "$popup_directory" -x "$popup_x" -y "$popup_y" -w "$popup_width" -h "$popup_height" -s "$popup_style" \
-    sh -c '"$1" "$2" "$3" "$4" "$5" "$6"' sh "$animate_script" "$file_path" "$type_delay" "$animation_mode" "$popup_width" "$popup_height"
+  if [[ "$toast_style_mode" == "normal" ]]; then
+    border_flags=(-b rounded)
+  else
+    border_flags=(-B)
+  fi
+
+  tmux display-popup "${popup_target[@]}" "${popup_flags[@]}" "${border_flags[@]}" -d "$popup_directory" -x "$popup_x" -y "$popup_y" -w "$popup_width" -h "$popup_height" -s "$popup_style" \
+    sh -c '"$1" "$2" "$3" "$4" "$5" "$6" "$7"' sh "$animate_script" "$file_path" "$type_delay" "$animation_mode" "$toast_render_width" "$toast_render_height" "$toast_duration"
 }
 
 if ! tmux list-commands display-popup >/dev/null 2>&1; then
@@ -295,8 +316,9 @@ pad_y="$(normalize_nonnegative_int "$(get_option "@tmux-toast-padding-y" "$DEFAU
 margin_right="$(normalize_nonnegative_int "$(get_option "@tmux-toast-margin-right" "$DEFAULT_MARGIN_RIGHT")" "$DEFAULT_MARGIN_RIGHT")"
 margin_top="$(normalize_nonnegative_int "$(get_option "@tmux-toast-margin-top" "$DEFAULT_MARGIN_TOP")" "$DEFAULT_MARGIN_TOP")"
 size_mode="$(normalize_size_mode "$(get_option "@tmux-toast-size" "auto")")"
-invert_colors="$(normalize_on_off "$(get_option "@tmux-toast-invert-colors" "$DEFAULT_INVERT_COLORS")" "$DEFAULT_INVERT_COLORS")"
+toast_style_mode="$(normalize_toast_style_mode "$(get_option "@tmux-toast-style" "$DEFAULT_TOAST_STYLE_MODE")")"
 type_delay="$(normalize_nonnegative_number "$(get_option "@tmux-toast-type-delay" "$DEFAULT_TYPE_DELAY")" "$DEFAULT_TYPE_DELAY")"
+toast_duration="$(normalize_nonnegative_number "$(get_option "@tmux-toast_duration" "$DEFAULT_TOAST_DURATION")" "$DEFAULT_TOAST_DURATION")"
 animation_mode="$(normalize_animation_mode "$(get_option "@tmux-toast-animation-mode" "$DEFAULT_ANIMATION_MODE")")"
 
 base_popup_style="$(read_style_option popup-style)"
@@ -312,7 +334,7 @@ if [[ -z "$base_popup_style" || "$base_popup_style" == "default" ]]; then
   base_popup_style="$(read_style_option status-style)"
 fi
 
-if [[ "$invert_colors" == "on" ]]; then
+if [[ "$toast_style_mode" == "invert" ]]; then
   popup_style="$(invert_style_fg_bg "$base_popup_style")"
 else
   popup_style="$base_popup_style"

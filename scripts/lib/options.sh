@@ -68,6 +68,25 @@ normalize_animation_mode() {
   esac
 }
 
+normalize_toast_style_mode() {
+  local raw_mode="$1"
+  local mode="${raw_mode,,}"
+
+  case "$mode" in
+    invert|inverted)
+      printf 'invert'
+      return
+      ;;
+    normal)
+      printf 'normal'
+      return
+      ;;
+    *)
+      printf 'invert'
+      ;;
+  esac
+}
+
 normalize_on_off() {
   local raw_value="$1"
   local default_value="$2"
