@@ -25,6 +25,7 @@ STYLE_PREFIX=""
 STYLE_RESET=""
 REDRAW_INTERVAL_MS=50
 preserve_ansi_content=0
+TOAST_SLIDE_MIN_FRAME_DELAY='0.01'
 
 setup_write_lock() {
   local safe_tty
@@ -310,6 +311,59 @@ hold_current_frame() {
   done
 }
 
+clamp_toast_slide_delay() {
+  local raw_delay="$1"
+
+  LC_ALL=C awk -v value="$raw_delay" -v min_delay="$TOAST_SLIDE_MIN_FRAME_DELAY" 'BEGIN {
+    if (value < min_delay) {
+      printf "%.3f", min_delay
+      exit
+    }
+
+    printf "%s", value
+  }'
+}
+
+hold_toast_slide_frame() {
+  local duration="$1"
+  local duration_ms
+  local end_ms
+  local now_ms
+  local remaining_ms
+  local sleep_ms
+
+  duration_ms="$(LC_ALL=C awk -v value="$duration" 'BEGIN {
+    if (value <= 0) {
+      print 0
+      exit
+    }
+    printf "%d", (value * 1000) + 0.5
+  }')"
+
+  if (( duration_ms <= 0 )); then
+    transition_frame_x "$origin_x" "$origin_x"
+    return
+  fi
+
+  end_ms=$(( $(date +%s%3N) + duration_ms ))
+  while :; do
+    transition_frame_x "$origin_x" "$origin_x"
+    now_ms="$(date +%s%3N)"
+    if (( now_ms >= end_ms )); then
+      break
+    fi
+
+    remaining_ms=$((end_ms - now_ms))
+    if (( remaining_ms > REDRAW_INTERVAL_MS )); then
+      sleep_ms="$REDRAW_INTERVAL_MS"
+    else
+      sleep_ms="$remaining_ms"
+    fi
+
+    sleep_milliseconds "$sleep_ms"
+  done
+}
+
 compute_visible_region() {
   local x="$1"
   local width="$2"
@@ -390,50 +444,6 @@ clear_frame_at_x_locked() {
   done
 }
 
-clear_horizontal_strip_locked() {
-  local start_x="$1"
-  local width="$2"
-  local end_x
-  local clipped_start
-  local clipped_end
-  local clipped_width
-  local blank_line
-  local row
-  local y
-
-  if (( width <= 0 || frame_height <= 0 )); then
-    return
-  fi
-
-  end_x=$((start_x + width - 1))
-  clipped_start="$start_x"
-  clipped_end="$end_x"
-
-  if (( clipped_end < 0 || clipped_start >= viewport_width )); then
-    return
-  fi
-
-  if (( clipped_start < 0 )); then
-    clipped_start=0
-  fi
-
-  if (( clipped_end >= viewport_width )); then
-    clipped_end=$((viewport_width - 1))
-  fi
-
-  if (( clipped_end < clipped_start )); then
-    return
-  fi
-
-  clipped_width=$((clipped_end - clipped_start + 1))
-  blank_line="$(repeat_char "$clipped_width" " ")"
-
-  for (( row = 0; row < frame_height; row += 1 )); do
-    y=$((origin_y + row + 1))
-    printf '\033[%d;%dH%s' "$y" "$((clipped_start + 1))" "$blank_line" >&3
-  done
-}
-
 draw_frame_at_x() {
   local x="$1"
 
@@ -487,31 +497,22 @@ draw_frame_at_x_locked() {
 transition_frame_x() {
   local from_x="$1"
   local to_x="$2"
-  local clear_start
-  local clear_width
 
   if (( write_lock_open == 1 )); then
     flock -x 9
   fi
 
-  printf '\0337\033[?25l' >&3
+  printf '\033[?25l' >&3
+  if (( from_x != to_x )); then
+    clear_frame_at_x_locked "$from_x"
+  fi
   draw_frame_at_x_locked "$to_x"
 
-  if (( to_x < from_x )); then
-    clear_start=$((to_x + frame_width))
-    clear_width=$((from_x - to_x))
-  elif (( to_x > from_x )); then
-    clear_start="$from_x"
-    clear_width=$((to_x - from_x))
+  if [[ -n "$STYLE_RESET" ]]; then
+    printf '%s' "$STYLE_RESET" >&3
   else
-    clear_width=0
+    printf '\033[0m' >&3
   fi
-
-  if (( clear_width > 0 )); then
-    clear_horizontal_strip_locked "$clear_start" "$clear_width"
-  fi
-
-  printf '\0338' >&3
 
   if (( write_lock_open == 1 )); then
     flock -u 9
@@ -736,13 +737,16 @@ run_slide() {
 run_toast_slide() {
   local start_x
   local current_x
-  local previous_x=""
+  local previous_x
   local next_x
   local frame_step=1
   local max_frames=40
   local travel
+  local frame_delay
 
   build_frame_lines CONTENT_LINES
+
+  frame_delay="$(clamp_toast_slide_delay "$type_delay")"
 
   start_x="$viewport_width"
   if (( start_x < origin_x )); then
@@ -755,15 +759,12 @@ run_toast_slide() {
   fi
 
   current_x="$start_x"
+  previous_x="$start_x"
   while (( current_x > origin_x )); do
-    if [[ -n "$previous_x" ]]; then
-      transition_frame_x "$previous_x" "$current_x"
-    else
-      draw_frame_at_x "$current_x"
-    fi
+    transition_frame_x "$previous_x" "$current_x"
     previous_x="$current_x"
 
-    sleep "$type_delay"
+    sleep "$frame_delay"
 
     current_x=$((current_x - frame_step))
     if (( current_x < origin_x )); then
@@ -771,12 +772,10 @@ run_toast_slide() {
     fi
   done
 
-  if [[ -n "$previous_x" ]] && (( previous_x != origin_x )); then
+  if (( previous_x != origin_x )); then
     transition_frame_x "$previous_x" "$origin_x"
-  else
-    draw_current_frame
   fi
-  hold_current_frame "$toast_duration"
+  hold_toast_slide_frame "$toast_duration"
 
   current_x="$origin_x"
   while (( current_x < viewport_width )); do
@@ -789,11 +788,15 @@ run_toast_slide() {
 
     current_x="$next_x"
     if (( current_x < viewport_width )); then
-      sleep "$type_delay"
+      sleep "$frame_delay"
     fi
   done
 
   origin_x="$viewport_width"
+
+  if [[ -n "$target_client" ]]; then
+    tmux refresh-client -t "$target_client" >/dev/null 2>&1 || true
+  fi
 }
 
 if [[ -z "$file_path" || ! -f "$file_path" ]]; then
