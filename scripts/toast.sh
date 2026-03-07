@@ -27,6 +27,11 @@ display_error() {
   tmux display-message "tmux-toast: $1"
 }
 
+read_style_option() {
+  local option_name="$1"
+  tmux show-options -gv "$option_name" 2>/dev/null || true
+}
+
 render_popup_from_decoded() {
   local decoded_text="$1"
   local -a source_lines
@@ -294,11 +299,17 @@ invert_colors="$(normalize_on_off "$(get_option "@tmux-toast-invert-colors" "$DE
 type_delay="$(normalize_nonnegative_number "$(get_option "@tmux-toast-type-delay" "$DEFAULT_TYPE_DELAY")" "$DEFAULT_TYPE_DELAY")"
 animation_mode="$(normalize_animation_mode "$(get_option "@tmux-toast-animation-mode" "$DEFAULT_ANIMATION_MODE")")"
 
-configured_popup_style="$(get_option "@tmux-toast-style" "")"
-if [[ -n "$configured_popup_style" ]]; then
-  base_popup_style="$configured_popup_style"
-else
-  base_popup_style="$(tmux display-message -p '#{E:popup-style}')"
+base_popup_style="$(read_style_option popup-style)"
+if [[ -z "$base_popup_style" || "$base_popup_style" == "default" ]]; then
+  base_popup_style="$(read_style_option window-active-style)"
+fi
+
+if [[ -z "$base_popup_style" || "$base_popup_style" == "default" ]]; then
+  base_popup_style="$(read_style_option window-style)"
+fi
+
+if [[ -z "$base_popup_style" || "$base_popup_style" == "default" ]]; then
+  base_popup_style="$(read_style_option status-style)"
 fi
 
 if [[ "$invert_colors" == "on" ]]; then

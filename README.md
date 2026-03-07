@@ -29,7 +29,7 @@ Behavior:
 - Inner padding is applied around the message.
 - If needed, lines wrap automatically (soft-wrap on spaces, hard-wrap long words).
 - Popup opens in the top-right corner with configurable margins.
-- Popup style colors are inverted by default (based on tmux popup style fg/bg).
+- Popup colors are derived from tmux styles (`popup-style` -> `window-active-style` -> `window-style` -> `status-style`) and inverted by default.
 - Message animation mode is configurable (`typewriter` or `slide`).
 - In `slide` mode, the message slides in from right, stays for 2 seconds, then slides out left and closes automatically.
 - In `typewriter` mode, the message writes in, stays for 2 seconds, then writes out and closes automatically.
@@ -77,5 +77,4 @@ set -g @tmux-toast-margin-top '1'   # Default: 1
 set -g @tmux-toast-invert-colors 'on' # Default: on
 set -g @tmux-toast-animation-mode 'typewriter' # typewriter|slide
 set -g @tmux-toast-type-delay '0.06' # Seconds per character
-set -g @tmux-toast-style 'fg=colour252,bg=colour235' # Optional base style
 ```
