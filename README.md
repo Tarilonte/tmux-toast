@@ -66,17 +66,13 @@ Supported script flags:
 - `--animation <none|typewriter|slide|toast-slide>`
 - `--duration <seconds>`
 - `--delay <seconds>`
-- `--size <auto|small|medium|large>`
-- `--padding-x <int>`
-- `--padding-y <int>`
 - `--margin-right <int>`
 - `--margin-top <int>`
 - `-h, --help`
 
 Behavior:
 
-- In `auto` mode, toast width and height are calculated from your message content.
-- Inner padding is applied around the message.
+- Toast width and height are automatically calculated from message content.
 - If needed, lines wrap automatically (soft-wrap on spaces, hard-wrap long words).
 - Toasts are rendered in a top-right container anchored by `@tmux-toast-margin-top` and `@tmux-toast-margin-right`.
 - If multiple toasts are active, new toasts are stacked below existing ones.
@@ -94,15 +90,6 @@ Behavior:
 - `@tmux-toast-type-delay` is ignored when `@tmux-toast-animation-mode` is `none`.
 - Each toast opens at its full computed size from the beginning.
 - Invert style is borderless; normal style uses rounded corners.
-
-## Size Presets
-
-You can pick a preconfigured toast size:
-
-- `auto` (default): content-based sizing (current behavior)
-- `small`: `45% x 30%`
-- `medium`: `65% x 50%`
-- `large`: `85% x 70%`
 
 ## Escapes
 
@@ -128,9 +115,6 @@ Notes:
 
 ```tmux
 set -g @tmux-toast-key 'P'          # Default: P
-set -g @tmux-toast-size 'auto'      # auto|small|medium|large
-set -g @tmux-toast-padding-x '2'    # Default: 2
-set -g @tmux-toast-padding-y '1'    # Default: 1
 set -g @tmux-toast-margin-right '2' # Default: 2
 set -g @tmux-toast-margin-top '1'   # Default: 1
 set -g @tmux-toast-style 'invert'    # invert|normal (Default: invert)

@@ -16,9 +16,6 @@ cli_style_override=""
 cli_animation_override=""
 cli_duration_override=""
 cli_delay_override=""
-cli_size_override=""
-cli_padding_x_override=""
-cli_padding_y_override=""
 cli_margin_right_override=""
 cli_margin_top_override=""
 cli_message_override=""
@@ -55,9 +52,6 @@ Options:
       --animation <mode>                 none|typewriter|slide|toast-slide
       --duration <seconds>               Toast visibility duration
       --delay <seconds>                  Animation frame/typing delay
-      --size <auto|small|medium|large>   Toast size mode
-      --padding-x <int>                  Horizontal inner padding
-      --padding-y <int>                  Vertical inner padding
       --margin-right <int>               Right margin
       --margin-top <int>                 Top margin
   -h, --help                             Show this help
@@ -89,9 +83,6 @@ parse_cli_args() {
   cli_animation_override=""
   cli_duration_override=""
   cli_delay_override=""
-  cli_size_override=""
-  cli_padding_x_override=""
-  cli_padding_y_override=""
   cli_margin_right_override=""
   cli_margin_top_override=""
   cli_message_override=""
@@ -145,33 +136,6 @@ parse_cli_args() {
         ;;
       --delay=*|--type-delay=*)
         cli_delay_override="${1#*=}"
-        shift
-        ;;
-      --size)
-        require_arg_value "$1" "$#"
-        cli_size_override="$2"
-        shift 2
-        ;;
-      --size=*)
-        cli_size_override="${1#*=}"
-        shift
-        ;;
-      --padding-x)
-        require_arg_value "$1" "$#"
-        cli_padding_x_override="$2"
-        shift 2
-        ;;
-      --padding-x=*)
-        cli_padding_x_override="${1#*=}"
-        shift
-        ;;
-      --padding-y)
-        require_arg_value "$1" "$#"
-        cli_padding_y_override="$2"
-        shift 2
-        ;;
-      --padding-y=*)
-        cli_padding_y_override="${1#*=}"
         shift
         ;;
       --margin-right)
@@ -431,21 +395,7 @@ render_popup_from_decoded() {
     border_rows=0
   fi
 
-  if [[ "$size_mode" == "auto" ]]; then
-    natural_popup_width=$((longest_line + (2 * pad_x) + border_cols))
-  else
-    case "$size_mode" in
-      small)
-        natural_popup_width=$(((client_width * 45) / 100))
-        ;;
-      medium)
-        natural_popup_width=$(((client_width * 65) / 100))
-        ;;
-      large)
-        natural_popup_width=$(((client_width * 85) / 100))
-        ;;
-    esac
-  fi
+  natural_popup_width=$((longest_line + (2 * pad_x) + border_cols))
 
   popup_width="$(clamp "$natural_popup_width" 3 "$client_width")"
   content_width=$((popup_width - border_cols))
@@ -472,21 +422,7 @@ render_popup_from_decoded() {
 
   wrapped_line_count="${#wrapped_plain_lines[@]}"
 
-  if [[ "$size_mode" == "auto" ]]; then
-    natural_popup_height=$((wrapped_line_count + (2 * pad_y) + border_rows))
-  else
-    case "$size_mode" in
-      small)
-        natural_popup_height=$(((client_height * 30) / 100))
-        ;;
-      medium)
-        natural_popup_height=$(((client_height * 50) / 100))
-        ;;
-      large)
-        natural_popup_height=$(((client_height * 70) / 100))
-        ;;
-    esac
-  fi
+  natural_popup_height=$((wrapped_line_count + (2 * pad_y) + border_rows))
 
   popup_height="$(clamp "$natural_popup_height" 3 "$client_height")"
   content_height=$((popup_height - border_rows))
@@ -617,23 +553,14 @@ show_tty_with_file() {
 raw_message=""
 parse_cli_args raw_message "$@"
 
-pad_x="$(normalize_nonnegative_int "$(get_option "@tmux-toast-padding-x" "$DEFAULT_PAD_X")" "$DEFAULT_PAD_X")"
-pad_y="$(normalize_nonnegative_int "$(get_option "@tmux-toast-padding-y" "$DEFAULT_PAD_Y")" "$DEFAULT_PAD_Y")"
+pad_x="$DEFAULT_PAD_X"
+pad_y="$DEFAULT_PAD_Y"
 margin_right="$(normalize_nonnegative_int "$(get_option "@tmux-toast-margin-right" "$DEFAULT_MARGIN_RIGHT")" "$DEFAULT_MARGIN_RIGHT")"
 margin_top="$(normalize_nonnegative_int "$(get_option "@tmux-toast-margin-top" "$DEFAULT_MARGIN_TOP")" "$DEFAULT_MARGIN_TOP")"
-size_mode="$(normalize_size_mode "$(get_option "@tmux-toast-size" "auto")")"
 toast_style_mode="$(normalize_toast_style_mode "$(get_option "@tmux-toast-style" "$DEFAULT_TOAST_STYLE_MODE")")"
 type_delay="$(normalize_nonnegative_number "$(get_option "@tmux-toast-type-delay" "$DEFAULT_TYPE_DELAY")" "$DEFAULT_TYPE_DELAY")"
 toast_duration="$(normalize_nonnegative_number "$(get_option "@tmux-toast_duration" "$DEFAULT_TOAST_DURATION")" "$DEFAULT_TOAST_DURATION")"
 animation_mode="$(normalize_animation_mode "$(get_option "@tmux-toast-animation-mode" "$DEFAULT_ANIMATION_MODE")")"
-
-if [[ -n "$cli_padding_x_override" ]]; then
-  pad_x="$(normalize_nonnegative_int "$cli_padding_x_override" "$pad_x")"
-fi
-
-if [[ -n "$cli_padding_y_override" ]]; then
-  pad_y="$(normalize_nonnegative_int "$cli_padding_y_override" "$pad_y")"
-fi
 
 if [[ -n "$cli_margin_right_override" ]]; then
   margin_right="$(normalize_nonnegative_int "$cli_margin_right_override" "$margin_right")"
@@ -643,9 +570,6 @@ if [[ -n "$cli_margin_top_override" ]]; then
   margin_top="$(normalize_nonnegative_int "$cli_margin_top_override" "$margin_top")"
 fi
 
-if [[ -n "$cli_size_override" ]]; then
-  size_mode="$(normalize_size_mode "$cli_size_override")"
-fi
 
 if [[ -n "$cli_style_override" ]]; then
   toast_style_mode="$(normalize_toast_style_mode "$cli_style_override")"

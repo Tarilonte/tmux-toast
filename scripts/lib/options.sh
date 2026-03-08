@@ -38,21 +38,6 @@ normalize_nonnegative_number() {
   printf '%s' "$default_value"
 }
 
-normalize_size_mode() {
-  local raw_mode="$1"
-  local mode="${raw_mode,,}"
-
-  case "$mode" in
-    auto|small|medium|large)
-      printf '%s' "$mode"
-      return
-      ;;
-    *)
-      printf 'auto'
-      ;;
-  esac
-}
-
 normalize_animation_mode() {
   local raw_mode="$1"
   local mode="${raw_mode,,}"
