@@ -130,3 +130,7 @@ set -g @tmux-toast-animation-mode 'typewriter' # none|typewriter|slide|toast-sli
 set -g @tmux-toast-type-delay '0.06' # Seconds per character
 set -g @tmux-toast_duration '5'      # Seconds the toast remains visible
 ```
+
+## Credits
+
+Built with AI assistance in OpenCode, primarily using GPT-5.3 Codex.
