@@ -12,7 +12,7 @@ A lightweight tmux plugin that renders auto-sized terminal toasts from a typed m
 Add the plugin to your tmux config:
 
 ```tmux
-set -g @plugin 'tarik/tmux-toast'
+set -g @plugin 'Tarilonte/tmux-toast'
 ```
 
 Reload tmux config and install with TPM (`prefix + I`).
