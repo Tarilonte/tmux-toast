@@ -29,6 +29,17 @@ You can also call the script directly:
 ~/.tmux/plugins/tmux-toast/scripts/toast.sh "Build finished"
 ```
 
+From another script, the recommended invocation is:
+
+```bash
+tmux run-shell -b "~/.tmux/plugins/tmux-toast/scripts/toast.sh --message 'Build finished'"
+```
+
+Notes:
+
+- The toast renderer needs an active tmux client.
+- Calling it through `tmux run-shell -b` is the safest way to trigger a toast from automation.
+
 CLI flags override tmux options for that single toast invocation.
 
 ```bash
