@@ -4,6 +4,8 @@
 
 TTY-native toast notifications for tmux with stacked rendering, markdown formatting, and scriptable CLI overrides.
 
+![tmux-toast typewriter demo](assets/tmux-toast-typewriter.gif)
+
 ## Requirements
 
 - tmux 3.2 or newer
@@ -140,3 +142,17 @@ set -g @tmux-toast_duration '5'      # Seconds the toast remains visible
 ## Credits
 
 Built with AI assistance in OpenCode, primarily using GPT-5.3 Codex.
+
+## Demo Generation
+
+Regenerate the README animation locally:
+
+```bash
+demo/setup_demo_tools.sh
+demo/render_typewriter_demo_gif.sh
+```
+
+This writes:
+
+- `assets/tmux-toast-typewriter.gif`
+- `demo/tmux-toast-typewriter.cast`
