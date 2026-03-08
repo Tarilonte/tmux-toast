@@ -474,13 +474,13 @@ hold_toast_slide_frame() {
   }')"
 
   if (( duration_ms <= 0 )); then
-    transition_frame_x "$origin_x" "$origin_x"
+    draw_current_frame
     return
   fi
 
   end_ms=$(( $(date +%s%3N) + duration_ms ))
   while :; do
-    transition_frame_x "$origin_x" "$origin_x"
+    draw_current_frame
     now_ms="$(date +%s%3N)"
     if (( now_ms >= end_ms )); then
       break
@@ -635,6 +635,8 @@ transition_frame_x() {
     flock -x 9
   fi
 
+  printf '\0337' >&3
+
   if (( from_x != to_x )); then
     clear_frame_at_x_locked "$from_x"
   fi
@@ -645,6 +647,8 @@ transition_frame_x() {
   else
     printf '\033[0m' >&3
   fi
+
+  printf '\0338' >&3
 
   if (( write_lock_open == 1 )); then
     flock -u 9
