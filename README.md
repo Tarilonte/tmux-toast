@@ -1,6 +1,8 @@
 # tmux-toast
 
-A lightweight tmux plugin that renders auto-sized terminal toasts from a typed message.
+[![GitHub Release](https://img.shields.io/github/v/release/Tarilonte/tmux-toast)](https://github.com/Tarilonte/tmux-toast/releases)
+
+TTY-native toast notifications for tmux with stacked rendering, markdown formatting, and scriptable CLI overrides.
 
 ## Requirements
 
@@ -17,11 +19,15 @@ set -g @plugin 'Tarilonte/tmux-toast'
 
 Reload tmux config and install with TPM (`prefix + I`).
 
+## Quick Start
+
+- Press `prefix + P`
+- Type a message in the `Toast message` prompt
+- Press Enter
+
 ## Usage
 
-Press `prefix + P`.
-
-The plugin opens a prompt (`Toast message`). Type a message and press Enter.
+The default keybinding opens the `Toast message` prompt and renders the toast in the active tmux client.
 
 You can also call the script directly:
 
