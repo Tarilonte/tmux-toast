@@ -4,7 +4,7 @@
 
 TTY-native toast notifications for tmux with stacked rendering, markdown formatting, and scriptable CLI overrides.
 
-![tmux-toast stacked animation demo](assets/tmux-toast-typewriter.gif)
+![tmux-toast typewriter demo](assets/tmux-toast-typewriter.gif)
 
 ## Requirements
 

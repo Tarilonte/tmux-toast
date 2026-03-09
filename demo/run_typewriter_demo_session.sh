@@ -15,6 +15,6 @@ trap cleanup EXIT
 tmux -L "$SOCKET_NAME" kill-server >/dev/null 2>&1 || true
 tmux -L "$SOCKET_NAME" new-session -d -s demo "bash '$PANE_SCRIPT'"
 
-(sleep 10; tmux -L "$SOCKET_NAME" detach-client -a >/dev/null 2>&1 || true) &
+(sleep 8; tmux -L "$SOCKET_NAME" detach-client -a >/dev/null 2>&1 || true) &
 
 tmux -L "$SOCKET_NAME" attach -t demo
