@@ -203,6 +203,108 @@ sanitize_client_key() {
   printf '%s' "$safe_value"
 }
 
+seconds_to_milliseconds() {
+  local seconds="$1"
+  local whole="0"
+  local fraction=""
+
+  if [[ "$seconds" == *.* ]]; then
+    whole="${seconds%%.*}"
+    fraction="${seconds#*.}"
+  else
+    whole="$seconds"
+  fi
+
+  if [[ -z "$whole" ]]; then
+    whole=0
+  fi
+
+  fraction="${fraction}000"
+  fraction="${fraction:0:3}"
+
+  printf '%s' $((10#$whole * 1000 + 10#$fraction))
+}
+
+setup_shared_renderer_state() {
+  local safe_client
+  local state_root
+
+  safe_client="$(sanitize_client_key "$toast_client_name")"
+  state_root="${TMPDIR:-/tmp}/tmux-toast-renderer-${safe_client}"
+
+  toast_state_dir="$state_root"
+  toast_requests_dir="$state_root/requests"
+  toast_messages_dir="$state_root/messages"
+  toast_renderer_pid_file="$state_root/renderer.pid"
+  toast_renderer_lock_file="$state_root/renderer.lock"
+
+  mkdir -p "$toast_requests_dir" "$toast_messages_dir"
+}
+
+start_shared_renderer_if_needed() {
+  local renderer_pid=""
+
+  exec 7>"$toast_renderer_lock_file"
+  flock -x 7
+
+  if [[ -f "$toast_renderer_pid_file" ]]; then
+    if read -r renderer_pid < "$toast_renderer_pid_file" && [[ "$renderer_pid" =~ ^[0-9]+$ ]] && kill -0 "$renderer_pid" 2>/dev/null; then
+      flock -u 7
+      exec 7>&-
+      return
+    fi
+
+    rm -f "$toast_renderer_pid_file"
+  fi
+
+  bash "$renderer_backend_script" "$toast_client_name" "$toast_client_tty" "$toast_state_dir" >/dev/null 2>&1 &
+
+  flock -u 7
+  exec 7>&-
+}
+
+enqueue_shared_toast() {
+  local request_id
+  local message_file
+  local request_tmp
+  local request_file
+  local renderer_pid=""
+  local created_ms
+  local delay_ms
+  local duration_ms
+
+  created_ms="$(date +%s%3N)"
+  delay_ms="$(seconds_to_milliseconds "$type_delay")"
+  duration_ms="$(seconds_to_milliseconds "$toast_duration")"
+  request_id="${created_ms}-$$-${RANDOM}"
+  message_file="$toast_messages_dir/${request_id}.msg"
+  request_tmp="$toast_requests_dir/${request_id}.tmp"
+  request_file="$toast_requests_dir/${request_id}.req"
+
+  printf '%s' "$rendered_message" > "$message_file"
+
+  {
+    printf 'request_id=%q\n' "$request_id"
+    printf 'message_file=%q\n' "$message_file"
+    printf 'animation_mode=%q\n' "$animation_mode"
+    printf 'delay_ms=%q\n' "$delay_ms"
+    printf 'duration_ms=%q\n' "$duration_ms"
+    printf 'text_width=%q\n' "$toast_render_width"
+    printf 'text_height=%q\n' "$toast_render_height"
+    printf 'toast_style_mode=%q\n' "$toast_style_mode"
+    printf 'popup_style=%q\n' "$popup_style"
+    printf 'margin_top=%q\n' "$margin_top"
+    printf 'margin_right=%q\n' "$margin_right"
+    printf 'created_ms=%q\n' "$created_ms"
+  } > "$request_tmp"
+
+  mv "$request_tmp" "$request_file"
+
+  if [[ -f "$toast_renderer_pid_file" ]] && read -r renderer_pid < "$toast_renderer_pid_file" && [[ "$renderer_pid" =~ ^[0-9]+$ ]]; then
+    kill -USR1 "$renderer_pid" 2>/dev/null || true
+  fi
+}
+
 setup_toast_container() {
   local safe_client
   local container_root
@@ -629,10 +731,8 @@ fi
 decoded_message="$(decode_message "$raw_message")"
 render_popup_from_decoded "$decoded_message"
 
-temp_file="$(mktemp "${TMPDIR:-/tmp}/tmux-toast.XXXXXX")"
-printf '%s' "$rendered_message" > "$temp_file"
-
 tty_backend_script="$SCRIPT_DIR/lib/backend_tty.sh"
+renderer_backend_script="$SCRIPT_DIR/lib/renderer_tty.sh"
 
 toast_container_lock_open=0
 toast_container_slot_registered=0
@@ -640,17 +740,26 @@ toast_container_slot_file=""
 toast_container_entries_dir=""
 toast_container_lock_file=""
 
-setup_toast_container
-trap release_container_slot EXIT INT TERM
+if [[ "$animation_mode" == 'toast-slide' ]]; then
+  temp_file="$(mktemp "${TMPDIR:-/tmp}/tmux-toast.XXXXXX")"
+  printf '%s' "$rendered_message" > "$temp_file"
 
-if ! reserve_container_slot; then
-  rm -f "$temp_file"
-  display_error "toast container is full"
-  exit 1
-fi
+  setup_toast_container
+  trap release_container_slot EXIT INT TERM
 
-if ! show_tty_with_file "$temp_file"; then
-  rm -f "$temp_file"
-  display_error "failed to render tty toast"
-  exit 1
+  if ! reserve_container_slot; then
+    rm -f "$temp_file"
+    display_error "toast container is full"
+    exit 1
+  fi
+
+  if ! show_tty_with_file "$temp_file"; then
+    rm -f "$temp_file"
+    display_error "failed to render tty toast"
+    exit 1
+  fi
+else
+  setup_shared_renderer_state
+  start_shared_renderer_if_needed
+  enqueue_shared_toast
 fi
