@@ -68,7 +68,17 @@ Supported script flags:
 - `--delay <seconds>`
 - `--margin-right <int>`
 - `--margin-top <int>`
+- `-L <socket-name>` to select a tmux server by socket name
+- `-S <socket-path>` to select a tmux server by socket path
 - `-h, --help`
+
+`-L` and `-S` are mutually exclusive. If neither is provided, tmux's default
+server is used. For example:
+
+```bash
+toast.sh -L work --message "Build finished"
+toast.sh -S "$XDG_RUNTIME_DIR/tmux/other" --message "Deploy finished"
+```
 
 Behavior:
 

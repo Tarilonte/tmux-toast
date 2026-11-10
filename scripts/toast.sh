@@ -19,6 +19,9 @@ cli_delay_override=""
 cli_margin_right_override=""
 cli_margin_top_override=""
 cli_message_override=""
+tmux_server_args=()
+tmux_server_option=""
+tmux_server_value=""
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -34,12 +37,16 @@ source "$SCRIPT_DIR/lib/layout.sh"
 source "$SCRIPT_DIR/lib/style.sh"
 
 display_error() {
-  tmux display-message "tmux-toast: $1"
+  tmux_cmd display-message "tmux-toast: $1"
 }
 
 read_style_option() {
   local option_name="$1"
-  tmux show-options -gv "$option_name" 2>/dev/null || true
+  tmux_cmd show-options -gv "$option_name" 2>/dev/null || true
+}
+
+tmux_cmd() {
+  command tmux "${tmux_server_args[@]}" "$@"
 }
 
 print_usage() {
@@ -54,6 +61,8 @@ Options:
       --delay <seconds>                  Animation frame/typing delay
       --margin-right <int>               Right margin
       --margin-top <int>                 Top margin
+  -L <socket-name>                       Select a tmux server by socket name
+  -S <socket-path>                       Select a tmux server by socket path
   -h, --help                             Show this help
 
 Examples:
@@ -156,6 +165,21 @@ parse_cli_args() {
         cli_margin_top_override="${1#*=}"
         shift
         ;;
+      -L|-S)
+        require_arg_value "$1" "$#"
+        if [[ -n "$tmux_server_option" ]]; then
+          display_error "only one of -L and -S may be specified"
+          exit 1
+        fi
+        if [[ -z "$2" ]]; then
+          display_error "missing value for $1"
+          exit 1
+        fi
+        tmux_server_option="$1"
+        tmux_server_value="$2"
+        tmux_server_args=("$1" "$2")
+        shift 2
+        ;;
       --)
         shift
         while (( $# > 0 )); do
@@ -205,10 +229,12 @@ sanitize_client_key() {
 
 setup_toast_container() {
   local safe_client
+  local server_key
   local container_root
 
   safe_client="$(sanitize_client_key "$toast_client_name")"
-  container_root="${TMPDIR:-/tmp}/tmux-toast-container-${safe_client}"
+  server_key="$(printf '%s' "$server_socket_path" | cksum | awk '{print $1}')"
+  container_root="${TMPDIR:-/tmp}/tmux-toast-container-${server_key}-${safe_client}"
 
   toast_container_entries_dir="${container_root}/entries"
   toast_container_lock_file="${container_root}/lock"
@@ -547,7 +573,8 @@ show_tty_with_file() {
   local file_path="$1"
 
   "$tty_backend_script" "$file_path" "$type_delay" "$animation_mode" "$toast_render_width" "$toast_render_height" "$toast_duration" \
-    "$toast_client_tty" "$popup_x" "$popup_y" "$toast_style_mode" "$popup_style" "$toast_client_name" "$client_width"
+    "$toast_client_tty" "$popup_x" "$popup_y" "$toast_style_mode" "$popup_style" "$toast_client_name" "$client_width" \
+    "$tmux_server_option" "$tmux_server_value"
 }
 
 raw_message=""
@@ -606,15 +633,21 @@ else
   popup_style="$base_popup_style"
 fi
 
-client_width="$(tmux display-message -p '#{client_width}')"
-client_height="$(tmux display-message -p '#{client_height}')"
+server_socket_path="$(tmux_cmd display-message -p '#{socket_path}')"
+if [[ -z "$server_socket_path" ]]; then
+  display_error "unable to determine tmux server socket path"
+  exit 1
+fi
+
+client_width="$(tmux_cmd display-message -p '#{client_width}')"
+client_height="$(tmux_cmd display-message -p '#{client_height}')"
 if ! [[ "$client_width" =~ ^[0-9]+$ ]] || ! [[ "$client_height" =~ ^[0-9]+$ ]]; then
   display_error "unable to read client size"
   exit 1
 fi
 
-toast_client_tty="$(tmux display-message -p '#{client_tty}')"
-toast_client_name="$(tmux display-message -p '#{client_name}')"
+toast_client_tty="$(tmux_cmd display-message -p '#{client_tty}')"
+toast_client_name="$(tmux_cmd display-message -p '#{client_name}')"
 
 if [[ -z "$toast_client_tty" || -z "$toast_client_name" ]]; then
   display_error "tty rendering requires an active tmux client"
