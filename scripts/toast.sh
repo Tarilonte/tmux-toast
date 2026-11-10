@@ -19,6 +19,7 @@ cli_delay_override=""
 cli_margin_right_override=""
 cli_margin_top_override=""
 cli_message_override=""
+tmux_server_args=()
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -34,12 +35,16 @@ source "$SCRIPT_DIR/lib/layout.sh"
 source "$SCRIPT_DIR/lib/style.sh"
 
 display_error() {
-  tmux display-message "tmux-toast: $1"
+  tmux_cmd display-message "tmux-toast: $1"
 }
 
 read_style_option() {
   local option_name="$1"
-  tmux show-options -gv "$option_name" 2>/dev/null || true
+  tmux_cmd show-options -gv "$option_name" 2>/dev/null || true
+}
+
+tmux_cmd() {
+  command tmux "${tmux_server_args[@]}" "$@"
 }
 
 print_usage() {
@@ -606,15 +611,15 @@ else
   popup_style="$base_popup_style"
 fi
 
-client_width="$(tmux display-message -p '#{client_width}')"
-client_height="$(tmux display-message -p '#{client_height}')"
+client_width="$(tmux_cmd display-message -p '#{client_width}')"
+client_height="$(tmux_cmd display-message -p '#{client_height}')"
 if ! [[ "$client_width" =~ ^[0-9]+$ ]] || ! [[ "$client_height" =~ ^[0-9]+$ ]]; then
   display_error "unable to read client size"
   exit 1
 fi
 
-toast_client_tty="$(tmux display-message -p '#{client_tty}')"
-toast_client_name="$(tmux display-message -p '#{client_name}')"
+toast_client_tty="$(tmux_cmd display-message -p '#{client_tty}')"
+toast_client_name="$(tmux_cmd display-message -p '#{client_name}')"
 
 if [[ -z "$toast_client_tty" || -z "$toast_client_name" ]]; then
   display_error "tty rendering requires an active tmux client"

@@ -5,7 +5,7 @@ get_option() {
   local default_value="$2"
   local option_value
 
-  option_value="$(tmux show-option -gqv "$option")"
+  option_value="$(tmux_cmd show-option -gqv "$option")"
   if [[ -n "$option_value" ]]; then
     printf '%s' "$option_value"
     return
