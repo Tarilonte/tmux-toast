@@ -20,7 +20,12 @@ toast_style_mode="${10-invert}"
 popup_style="${11-}"
 target_client="${12-}"
 viewport_width="${13-0}"
+tmux_server_option="${14-}"
+tmux_server_value="${15-}"
 tmux_server_args=()
+if [[ -n "$tmux_server_option" && -n "$tmux_server_value" ]]; then
+  tmux_server_args=("$tmux_server_option" "$tmux_server_value")
+fi
 
 tmux_cmd() {
   command tmux "${tmux_server_args[@]}" "$@"
