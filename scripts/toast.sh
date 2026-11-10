@@ -626,6 +626,7 @@ if [[ ! -w "$toast_client_tty" ]]; then
   exit 1
 fi
 
+raw_message="$(sanitize_message_controls "$raw_message")"
 decoded_message="$(decode_message "$raw_message")"
 render_popup_from_decoded "$decoded_message"
 
