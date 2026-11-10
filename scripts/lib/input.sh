@@ -1,5 +1,23 @@
 #!/usr/bin/env bash
 
+sanitize_message_controls() {
+  local input="$1"
+  local output=""
+  local current
+  local i
+
+  for (( i = 0; i < ${#input}; i += 1 )); do
+    current="${input:i:1}"
+
+    # Newlines are consumed as layout separators; other controls can affect the terminal.
+    if [[ "$current" == $'\n' ]] || [[ ! "$current" == [[:cntrl:]] ]]; then
+      output+="$current"
+    fi
+  done
+
+  printf '%s' "$output"
+}
+
 decode_message() {
   local input="$1"
   local output=""
